@@ -7,14 +7,14 @@ To remove the cloud dependency for my house heating, I decided to create this in
 Nice to have:
 - Open Window detection
 
-#Hardware
+# Hardware
 
-##Used boiler:
+## Used boiler:
 - Atag E325ec - 2015. This boiler supports the OpenThem Protocol
 
-##Thermostat
+## Thermostat
 - DIYLess OpenTherm thermostat with custom ESPHome config
 
-##Thermostatic Radiator Valve (TRV)
+## Thermostatic Radiator Valve (TRV)
 - Sonoff TRVZB
 - Shelly TRV Blu
