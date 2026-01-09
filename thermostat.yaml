@@ -1,0 +1,105 @@
+opentherm:
+  in_pin: 21
+  out_pin: 22
+  ch_enable: true
+  dhw_enable: false
+  cooling_enable: false
+  otc_active: false
+  ch2_active: true
+
+  t_room: ch_room_temperature
+
+output:
+  - platform: opentherm
+    t_set:
+      id: t_set
+      min_value: 45
+      auto_max_value: true
+      zero_means_zero: true
+
+sensor:
+  - platform: homeassistant
+    name: "Temperature Sensor From Home Assistant"
+    entity_id: sensor.virtual_heating_temperature
+    id: ch_room_temperature
+    filters: 
+      # Push room temperature every second to update PID parameters
+      - heartbeat: 1s 
+
+  - platform: opentherm
+    rel_mod_level:
+      name: "Relative modulation level"
+    ch_pressure:
+      name: "Water pressure in CH circuit"
+    t_boiler:
+      name: "Water temperature"
+    t_dhw:
+      name: "DHW temperature"
+    t_outside:
+      name: "Outside temperature"
+    t_ret:
+      name: "Return water temperature"
+    t_dhw_set_ub:
+      name: "Upper bound for adjustement of DHW setpoint"
+    t_dhw_set_lb:
+      name: "Lower bound for adjustement of DHW setpoint"
+    max_t_set_ub:
+      name: "Upper bound for adjustement of max CH setpoint"
+    max_t_set_lb:
+      name: "Lower bound for adjustement of max CH setpoint"
+    t_dhw_set:
+      name: "Domestic hot water temperature setpoint"
+    max_t_set:
+      name: "Maximum allowable CH water setpoint"
+
+binary_sensor:
+  - platform: opentherm
+    fault_indication:
+      name: "Fault indication"
+      entity_category: diagnostic
+    low_water_pressure:
+      name: "Low water pressure"
+    ch_active:
+      name: "Central Heating active"
+    dhw_active:
+      name: "Domestic Hot Water active"
+    flame_on:
+      name: "Flame on"
+    diagnostic_indication:
+      name: "Diagnostic event"
+      entity_category: diagnostic
+    dhw_present:
+      name: "DHW present"
+    control_type_on_off:
+      name: "Control type is on/off"
+    controller_pump_control_allowed:
+      name: "Master pump control allowed"
+    dhw_setpoint_transfer_enabled:
+      name: "DHW setpoint transfer enabled"
+    max_ch_setpoint_transfer_enabled:
+      name: "CH maximum setpoint transfer enabled"
+    dhw_setpoint_rw:
+      name: "DHW setpoint read/write"
+    max_ch_setpoint_rw:
+      name: "CH maximum setpoint read/write"
+
+switch:
+  - platform: opentherm
+    ch_enable:
+      name: "Central Heating enabled"
+    dhw_enable:
+      name: "Domestic Hot Water enabled"
+    otc_active:
+      name: "Outside temperature compensation active"
+ 
+climate:
+  - platform: pid
+    id: main_climate
+    name: "Central heating"
+    heat_output: t_set
+    default_target_temperature: 18
+    sensor: ch_room_temperature
+    control_parameters: 
+      kp: 0.7
+      ki: 0.005
+
