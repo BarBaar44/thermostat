@@ -1,0 +1,52 @@
+- triggers:
+      - trigger: time_pattern
+        seconds: "/10"
+    sensor:
+    - name: "Delta Temperature"
+      unique_id: ce2b9e44-0146-4783-9f8c-3f6c0280d3f8
+      state: >
+        {% set fallback_curr = states('sensor.temperature_living_room_temperature') | float(18) %}
+
+        {% set best = namespace(
+         delta = -999,
+         deviation = 0,
+         area = 'Off',
+         target = 10,
+        curr = fallback_curr
+        ) %}
+
+        {% for clim in states.climate
+         if clim.entity_id.startswith('climate.virtual_thermostat_')
+         and clim.state == 'heat' %}
+
+         {% set target = clim.attributes.temperature | float(18) %}
+         {% set curr   = clim.attributes.current_temperature | float(18) %}
+         {% set delta  = (target - curr) | round(1) %}
+         {% set deviation = delta | abs %}
+
+         {# Rule 1+2: prefer positive deltas #}
+         {% if delta > 0 and delta > best.delta %}
+         {% set best.delta = delta %}
+         {% set best.deviation = deviation %}
+         {% set best.area = area_name(clim.entity_id) or 'Off' %}
+         {% set best.target = target %}
+         {% set best.curr = curr %}
+
+        {# Rule 3: fallback to overshoot only if no positive delta exists #}
+        {% elif best.delta <= 0 and deviation > best.deviation %}
+        {% set best.delta = delta %}
+        {% set best.deviation = deviation %}
+        {% set best.area = area_name(clim.entity_id) or 'Off' %}
+        {% set best.target = target %}
+        {% set best.curr = curr %}
+        {% endif %}
+        {% endfor %}
+         
+        {{ {
+        "area":      best.area,
+          "target":    best.target,
+          "curr":      best.curr,
+          "delta":     best.delta
+         }
+        | to_json
+           }}
