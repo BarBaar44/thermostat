@@ -3,7 +3,13 @@ description: ""
 triggers:
   - trigger: state
     entity_id:
-      - sensor.virtual_heating_setpoint
+      - climate.virtual_thermostat_living_room
+      - climate.virtual_thermostat_room_gijs
+      - climate.virtual_thermostat_room_tim
+      - climate.virtual_thermostat_sports_room
+      - climate.virtual_thermostat_office
+      - climate.virtual_thermostat_master_bedroom
+    attribute: temperature
     id: Setpoint change
   - trigger: time
     at: "07:30:00"
@@ -35,6 +41,33 @@ triggers:
     from:
       - "on"
     id: Leaving Home
+  - trigger: state
+    entity_id:
+      - binary_sensor.backdoors_garden
+    from:
+      - "off"
+    to:
+      - "on"
+    id: Garden doors open
+    for:
+      hours: 0
+      minutes: 2
+      seconds: 0
+  - trigger: state
+    entity_id:
+      - binary_sensor.backdoors_garden
+    id: Garden doors closed
+    for:
+      hours: 0
+      minutes: 1
+      seconds: 0
+    from:
+      - "on"
+    to:
+      - "off"
+  - trigger: time
+    at: input_datetime.sun_check_time
+    id: Sun check
 conditions: []
 actions:
   - choose:
@@ -54,7 +87,7 @@ actions:
             data:
               temperature: >-
                 {{ state_attr('climate.virtual_thermostat_living_room',
-                'temperature') +1 }}
+                'temperature') + 1 }}
           - alias: Sent the Virtual Setpoint to the CV
             action: climate.set_temperature
             metadata: {}
@@ -68,7 +101,7 @@ actions:
             data:
               temperature: >-
                 {{ state_attr('climate.virtual_thermostat_room_gijs',
-                'temperature') +1 }}
+                'temperature') + 1 }}
             target:
               entity_id: climate.trv_room_gijs
           - alias: Sync Virtual setpoint Tim to Room Tim TRV's
@@ -76,18 +109,18 @@ actions:
             metadata: {}
             data:
               temperature: >-
-                {{ state_attr('climate.thermostat_room_tim', 'temperature') +1
-                }}
+                {{ state_attr('climate.virtual_thermostat_room_tim',
+                'temperature') + 1 }}
             target:
               entity_id:
                 - climate.trv_room_tim
-          - alias: Sync Virtual setpoint Tim to Room Tim TRV's
+          - alias: Sync Virtual setpoint Sports Room to Sports Room TRV
             action: climate.set_temperature
             metadata: {}
             data:
               temperature: >-
                 {{ state_attr('climate.virtual_thermostat_sports_room',
-                'temperature') +1 }}
+                'temperature') + 1 }}
             target:
               entity_id:
                 - climate.trv_sports_room
@@ -96,8 +129,8 @@ actions:
             metadata: {}
             data:
               temperature: >-
-                {{ state_attr('climate.virtual_thermostat_living_room',
-                'temperature') /2 }}
+                {{ [state_attr('climate.virtual_thermostat_living_room',
+                'temperature') - 8, 5] | max }}
             target:
               entity_id: climate.trv_hallway
           - alias: Sync Virtual setpoint Office to Office TRV's
@@ -106,17 +139,17 @@ actions:
             data:
               temperature: >-
                 {{ state_attr('climate.virtual_thermostat_office',
-                'temperature') +1 }}
+                'temperature') + 1 }}
             target:
               entity_id:
                 - climate.trv_office
-          - alias: Sync Virtual setpoint Office to Office TRV's
+          - alias: Sync Virtual setpoint Master Bedroom to Master Bedroom TRV's
             action: climate.set_temperature
             metadata: {}
             data:
               temperature: >-
                 {{ state_attr('climate.virtual_thermostat_master_bedroom',
-                'temperature') +1 }}
+                'temperature') + 1 }}
             target:
               entity_id:
                 - climate.shellyblutrv_f84477345a73
@@ -132,25 +165,66 @@ actions:
                 id:
                   - Weekdays Start
                   - Arriving Home
+              - condition: time
+                before: "20:00:00"
         sequence:
-          - action: climate.set_temperature
-            metadata: {}
+          - action: weather.get_forecasts
             target:
-              entity_id: climate.virtual_thermostat_living_room
+              entity_id: weather.forecast_home
             data:
-              temperature: 18
-              hvac_mode: heat
-          - action: climate.set_hvac_mode
-            metadata: {}
-            target:
-              entity_id: climate.virtual_thermostat_living_room
-            data:
-              hvac_mode: heat
-          - action: switch.turn_on
-            metadata: {}
-            target:
-              entity_id: switch.main_thermostat_central_heating_enabled
-            data: {}
+              type: daily
+            response_variable: forecast_result
+          - variables:
+              today_forecast: "{{ forecast_result['weather.forecast_home'].forecast[0] }}"
+              sunny_and_mild: >-
+                {{ today_forecast.condition in ['sunny', 'clear-night'] and
+                (today_forecast.temperature | float(0)) > 12 }}
+          - if:
+              - condition: template
+                value_template: "{{ sunny_and_mild }}"
+            then:
+              - action: climate.set_temperature
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  temperature: 15
+                  hvac_mode: heat
+              - action: switch.turn_on
+                metadata: {}
+                target:
+                  entity_id: switch.main_thermostat_central_heating_enabled
+                data: {}
+              - action: input_datetime.set_datetime
+                metadata: {}
+                target:
+                  entity_id: input_datetime.sun_check_time
+                data:
+                  timestamp: "{{ (now() + timedelta(hours=1)).timestamp() }}"
+              - action: input_boolean.turn_on
+                metadata: {}
+                target:
+                  entity_id: input_boolean.sun_assist_pending
+                data: {}
+            else:
+              - action: climate.set_temperature
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  temperature: 18
+                  hvac_mode: heat
+              - action: climate.set_hvac_mode
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  hvac_mode: heat
+              - action: switch.turn_on
+                metadata: {}
+                target:
+                  entity_id: switch.main_thermostat_central_heating_enabled
+                data: {}
         alias: Start Weekdays or Arriving Home
       - conditions:
           - condition: and
@@ -163,25 +237,104 @@ actions:
                 state:
                   - "on"
         sequence:
-          - action: climate.set_temperature
-            metadata: {}
+          - action: weather.get_forecasts
             target:
-              entity_id: climate.virtual_thermostat_living_room
+              entity_id: weather.forecast_home
             data:
-              temperature: 18
-              hvac_mode: heat
-          - action: switch.turn_on
-            metadata: {}
-            target:
-              entity_id: switch.main_thermostat_central_heating_enabled
-            data: {}
-          - action: climate.set_hvac_mode
-            metadata: {}
-            target:
-              entity_id: climate.virtual_thermostat_living_room
-            data:
-              hvac_mode: heat
+              type: daily
+            response_variable: forecast_result
+          - variables:
+              today_forecast: "{{ forecast_result['weather.forecast_home'].forecast[0] }}"
+              sunny_and_mild: >-
+                {{ today_forecast.condition in ['sunny', 'clear-night'] and
+                (today_forecast.temperature | float(0)) > 12 }}
+          - if:
+              - condition: template
+                value_template: "{{ sunny_and_mild }}"
+            then:
+              - action: climate.set_temperature
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  temperature: 15
+                  hvac_mode: heat
+              - action: switch.turn_on
+                metadata: {}
+                target:
+                  entity_id: switch.main_thermostat_central_heating_enabled
+                data: {}
+              - action: input_datetime.set_datetime
+                metadata: {}
+                target:
+                  entity_id: input_datetime.sun_check_time
+                data:
+                  timestamp: "{{ (now() + timedelta(hours=1)).timestamp() }}"
+              - action: input_boolean.turn_on
+                metadata: {}
+                target:
+                  entity_id: input_boolean.sun_assist_pending
+                data: {}
+            else:
+              - action: climate.set_temperature
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  temperature: 18
+                  hvac_mode: heat
+              - action: switch.turn_on
+                metadata: {}
+                target:
+                  entity_id: switch.main_thermostat_central_heating_enabled
+                data: {}
+              - action: climate.set_hvac_mode
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  hvac_mode: heat
         alias: Start weekend
+      - conditions:
+          - condition: trigger
+            id:
+              - Sun check
+          - condition: state
+            entity_id: input_boolean.sun_assist_pending
+            state: "on"
+        sequence:
+          - variables:
+              room_temp: >-
+                {{ state_attr('climate.virtual_thermostat_living_room',
+                'current_temperature') | float(0) }}
+          - if:
+              - condition: template
+                value_template: "{{ room_temp < 16 }}"
+            then:
+              - action: climate.set_temperature
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  temperature: 18
+                  hvac_mode: heat
+              - action: climate.set_hvac_mode
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  hvac_mode: heat
+              - action: switch.turn_on
+                metadata: {}
+                target:
+                  entity_id: switch.main_thermostat_central_heating_enabled
+                data: {}
+          - action: input_boolean.turn_off
+            metadata: {}
+            target:
+              entity_id: input_boolean.sun_assist_pending
+            data: {}
+        alias: Sun check - kick in full heating if still cold
       - conditions:
           - condition: trigger
             id:
@@ -203,6 +356,7 @@ actions:
                 - climate.trv_sports_room
             data:
               temperature: 10
+            continue_on_error: true
           - action: switch.turn_off
             metadata: {}
             target:
@@ -223,6 +377,93 @@ actions:
                 - climate.trv_sports_room
             data:
               hvac_mode: "off"
+          - action: input_boolean.turn_off
+            metadata: {}
+            target:
+              entity_id: input_boolean.garden_heating_paused
+            data: {}
+          - action: input_boolean.turn_off
+            metadata: {}
+            target:
+              entity_id: input_boolean.sun_assist_pending
+            data: {}
         alias: Stop heating after 20:00 or Leaving Home
-mode: parallel
-max: 2
+      - conditions:
+          - condition: trigger
+            id:
+              - Garden doors open
+          - condition: state
+            entity_id: climate.virtual_thermostat_living_room
+            state:
+              - heat
+        sequence:
+          - action: scene.create
+            metadata: {}
+            data:
+              scene_id: heatinglivingroomscene
+              snapshot_entities:
+                - climate.trv_living_room_front
+                - climate.trv_kitchen
+                - climate.trv_living_room_rear
+                - climate.virtual_thermostat_living_room
+          - action: climate.turn_off
+            metadata: {}
+            target:
+              entity_id: climate.virtual_thermostat_living_room
+            data: {}
+          - action: input_boolean.turn_on
+            metadata: {}
+            target:
+              entity_id: input_boolean.garden_heating_paused
+            data: {}
+        alias: Stop heating the livingroom when doors are open
+      - conditions:
+          - condition: trigger
+            id:
+              - Garden doors closed
+          - condition: state
+            entity_id: input_boolean.garden_heating_paused
+            state: "on"
+          - condition: time
+            before: "20:00:00"
+        sequence:
+          - action: scene.turn_on
+            target:
+              entity_id: scene.heatinglivingroomscene
+            data: {}
+          - action: input_boolean.turn_off
+            metadata: {}
+            target:
+              entity_id: input_boolean.garden_heating_paused
+            data: {}
+        alias: Resume heating the livingroom when doors are closed (within schedule)
+      - conditions:
+          - condition: trigger
+            id:
+              - Garden doors closed
+          - condition: state
+            entity_id: input_boolean.garden_heating_paused
+            state: "on"
+          - condition: time
+            after: "20:00:00"
+        sequence:
+          - action: climate.set_temperature
+            metadata: {}
+            target:
+              entity_id: climate.virtual_thermostat_living_room
+            data:
+              temperature: 10
+          - action: climate.set_hvac_mode
+            metadata: {}
+            target:
+              entity_id: climate.virtual_thermostat_living_room
+            data:
+              hvac_mode: "off"
+          - action: input_boolean.turn_off
+            metadata: {}
+            target:
+              entity_id: input_boolean.garden_heating_paused
+            data: {}
+        alias: Doors closed after schedule stop - keep living room off
+mode: queued
+max: 10
