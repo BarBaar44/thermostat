@@ -16,6 +16,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
   - [Boiler](#boiler)
   - [Thermostat](#thermostat)
   - [Thermostatic Radiator Valves (TRVs)](#thermostatic-radiator-valves-trvs)
+  - [Room Temperature Sensors](#room-temperature-sensors)
 - [System Overview](#system-overview)
   - [Rooms / Zones Covered](#rooms--zones-covered)
 - [ESPHome Thermostat Firmware (`thermostat.yaml`)](#esphome-thermostat-firmware-thermostatyaml)
@@ -36,6 +37,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
 | Boiler | Atag E325ec (2015) | Already installed; supports the OpenTherm protocol out of the box |
 | Thermostat | DIYLess OpenTherm thermostat, reflashed with custom ESPHome | Full local control over the PID loop and OpenTherm bus, instead of relying on the stock firmware |
 | TRVs (radiators) | Sonoff TRVZB + Shelly TRV Blu (mixed) | Sonoff where it physically fits; Shelly where space is tight |
+| Room temperature sensors | Xiaomi/Aqara [LYWSD03MMC](https://www.zigbee2mqtt.io/devices/LYWSD03MMC-z.html), reflashed with custom Zigbee firmware | Cheap, tiny, battery-powered - and made fully local by replacing the stock Bluetooth/Xiaomi firmware with a Zigbee one |
 
 ## Boiler
 
@@ -67,6 +69,12 @@ I use two different TRV models across the house, purely because of space constra
 | **Custom firmware** | N/A | Possibly? (unconfirmed) |
 
 In short: Sonoff is the better choice when it fits - cheaper, fully local, and better supported. Shelly is the fallback for tight spaces, at the cost of being smaller-but-more-limited and dependent on Shelly's own integration and Bluetooth stick.
+
+## Room Temperature Sensors
+
+Each room's actual current temperature (the `current_temperature` fed into its virtual thermostat, and ultimately into the Delta Temperature sensor and the ESPHome PID loop) comes from a Xiaomi/Aqara **[LYWSD03MMC](https://www.zigbee2mqtt.io/devices/LYWSD03MMC-z.html)** - a small, cheap, battery-powered temperature/humidity sensor.
+
+Out of the box, this sensor only speaks Bluetooth Low Energy with Xiaomi's own (or a custom BLE) firmware, which would mean relying on a BLE gateway/proxy per room - not ideal for a fully local, single-mesh setup. Instead, I reflashed these with **custom Zigbee firmware**, so they join the same Zigbee2MQTT network as the TRVs and other Zigbee devices in the house - one consistent local mesh, no separate Bluetooth infrastructure needed just for temperature readings.
 
 ---
 
