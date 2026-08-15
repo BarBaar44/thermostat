@@ -1,57 +1,74 @@
-To remove the cloud dependency for my house heating, I decided to create this in Home Assistant. The requirements I set are:
-- No cloud dependency
-- Multi-room support
-- Fully costimzable to my needs
-- Auto on/off when somebody/nobody is home
+# 🌡️ Thermostat - A Cloud-Free, Multi-Room Home Assistant Heating System
 
-Nice to have:
-- Open Window detection
+A local, OpenTherm-based central heating setup built entirely on Home Assistant and ESPHome. One "virtual thermostat" per room drives both the physical TRVs and the boiler itself, with automations handling daily scheduling, passive-solar assist, and open-window detection.
+
+## Goals
+
+- **No cloud dependency** - everything runs locally through Home Assistant, ESPHome, and OpenTherm; no third-party heating app or account required.
+- **Multi-room support** - every room/zone gets its own independent setpoint.
+- **Fully customizable** - built to fit my own house and habits, not a fixed vendor product.
+- **Auto on/off based on presence** - heating starts and stops automatically depending on whether anybody is home.
+- **Nice to have: open window detection** - heating pauses automatically if a door/window is left open.
+
+## Table of Contents
+
+- [Hardware](#hardware)
+  - [Boiler](#boiler)
+  - [Thermostat](#thermostat)
+  - [Thermostatic Radiator Valves (TRVs)](#thermostatic-radiator-valves-trvs)
+- [System Overview](#system-overview)
+  - [Rooms / Zones Covered](#rooms--zones-covered)
+- [ESPHome Thermostat Firmware (`thermostat.yaml`)](#esphome-thermostat-firmware-thermostatyaml)
+- [Automations](#automations)
+  - [TRV Setpoint Sync](#automationstrv_setpoint_syncyaml---trv-setpoint-sync)
+  - [Heating Schedule](#automationsheating_scheduleyaml---heating-schedule)
+  - [Garden Door Heating Pause](#automationsgarden_door_heating_pauseyaml---garden-door-heating-pause)
+  - [Shared Scripts](#scriptspause_livingroom_heatingyaml-and-scriptsresume_livingroom_heatingyaml)
+  - [Helper Entities Used](#helper-entities-used-across-all-three-automations)
+- [Delta Temperature Sensor](#delta-temperature-sensor-sensorsdelta_temperatureyaml)
+
+---
 
 # Hardware
 
-## Used boiler:
-- Atag E325ec - 2015. This boiler supports the OpenThem Protocol
+| Component | Choice | Why |
+|---|---|---|
+| Boiler | Atag E325ec (2015) | Already installed; supports the OpenTherm protocol out of the box |
+| Thermostat | DIYLess OpenTherm thermostat, reflashed with custom ESPHome | Full local control over the PID loop and OpenTherm bus, instead of relying on the stock firmware |
+| TRVs (radiators) | Sonoff TRVZB + Shelly TRV Blu (mixed) | Sonoff where it physically fits; Shelly where space is tight |
+
+## Boiler
+
+**Atag E325ec (2015).** This boiler natively supports the **OpenTherm** protocol, which is what makes this whole local, cloud-free approach possible in the first place - OpenTherm gives direct, real-time read/write access to setpoints and boiler telemetry over a simple two-wire bus, no vendor cloud service required.
 
 ## Thermostat
-- DIYLess OpenTherm thermostat with custom ESPHome config: [`thermostat.yaml`](thermostat.yaml)
 
-Because I want full control, I immediately pushed ESPHome onto the thermostat. But the DIYLess Thermostat has software on it that should work..
+**DIYLess OpenTherm thermostat**, running a fully custom ESPHome config: [`thermostat.yaml`](thermostat.yaml).
 
-I mostly got my config from XXX and XXX
+The DIYLess thermostat ships with its own stock firmware that technically works out of the box. I flashed ESPHome onto it anyway, because I wanted full control over the OpenTherm bus and the PID logic driving it, rather than being limited to whatever the stock firmware exposes.
 
-As I already have an OpenTherm Gateway, I already knew what sensors my boiler supports. I basically trimmed down the sensor config towards the sensor my boiler supports.
+Since I already had a separate OpenTherm Gateway in place beforehand, I already knew exactly which telemetry sensors my specific boiler supports - so the ESPHome sensor config here is deliberately trimmed down to just those, rather than a generic "expose everything" config.
 
-The hardest part of getting the thermostat dailed in is setting the PID-controller. ESPHome has an autotune function for this. But this only helped me so much. I ran the autotune once to get some initial values. It wasn't long before I found that with the parameters of the autotune, my boiler never got to the actual temperature. Digging around to find the actual meaning of those parameters, I was about to give up, but then I just asked ChatGPT for some help and it got me in the right direction. Awesome AI for once!
+By far the hardest part of getting this dialed in was tuning the **PID controller**. ESPHome ships with an autotune function for this, and I ran it once to get a starting point - but the resulting parameters never actually got the boiler up to the real target temperature. After a fair bit of digging to understand what each PID parameter actually does, I ended up asking ChatGPT for help, which pointed me in the right direction. (Genuinely useful AI, for once.)
 
-The final PID values landed on in [`thermostat.yaml`](thermostat.yaml) are `kp: 0.7`, `ki: 0.005` (see the `climate: - platform: pid` section), driving the OpenTherm `t_set` output. Room temperature is fed in from Home Assistant (`sensor.virtual_heating_temperature`) with a 1s heartbeat filter so the PID controller gets frequent updates even when the underlying sensor value hasn't changed.
+The final values I landed on in [`thermostat.yaml`](thermostat.yaml) are `kp: 0.7`, `ki: 0.005` (see the `climate: - platform: pid` section), driving the OpenTherm `t_set` output. Room temperature is fed in from Home Assistant (`sensor.virtual_heating_temperature`) with a 1-second heartbeat filter, so the PID controller gets frequent updates even when the underlying sensor value hasn't changed.
 
-## Thermostatic Radiator Valve (TRV)
-- Sonoff TRVZB
-- Shelly TRV Blu
+## Thermostatic Radiator Valves (TRVs)
 
-Yes, you got that right. I use 2 kinds of TRV's. For two radiators, as I have limited space for the TRV's. The Sonoff TRV's just didn't fit, so I had to fall back to the Shelly's. The Shelly TRV's are very much like the Tado's. Both in dimension and in appearance. Here are the pros and cons.
+I use two different TRV models across the house, purely because of space constraints - not every radiator had room for the Sonoff's bulkier housing, so a couple of rooms fell back to the smaller (but pricier) Shelly:
 
-### Sonoff TRZB
-Pros:
-- Cheaper
-- Completely local
-- Supported by Zigbee2MQTT
+| | Sonoff TRVZB | Shelly TRV Blu |
+|---|---|---|
+| **Size** | A bit bulkier | Small - about the same footprint as a Tado TRV |
+| **Cost** | Cheaper | More expensive |
+| **Connectivity** | Fully local via Zigbee2MQTT | Bluetooth only - needs a BLU-compatible stick/gateway for HA to reach it |
+| **HA integration** | Native Zigbee2MQTT support | Requires the separate Shelly integration |
+| **Control granularity** | Can control valve opening, but not straightforward via Zigbee2MQTT | Very limited control |
+| **Custom firmware** | N/A | Possibly? (unconfirmed) |
 
-Cons:
-- A little bigger than Tado (and Shelly)
-- Control is somewhat complicated. You can control the valve opening, but not very straightforward. At least not when using Zigbee2MQTT
+In short: Sonoff is the better choice when it fits - cheaper, fully local, and better supported. Shelly is the fallback for tight spaces, at the cost of being smaller-but-more-limited and dependent on Shelly's own integration and Bluetooth stick.
 
-### Shelly TRV Blue
-Pros:
-- Small, about the same size as Tado TRV's
-- Possible custom firmware?
-
-Cons:
-- Expensive
-- Still dependent on a third party
-- you need a stick to control them
-- You need another integration in HA (Shelly)
-- Very limited control.
+---
 
 # System overview
 
@@ -88,7 +105,7 @@ This is the actual device config flashed to the DIYLess OpenTherm thermostat. It
 
 - **`opentherm:`** - configures the OpenTherm master on GPIO pins 21 (in) / 22 (out), with central heating enabled, DHW (domestic hot water) disabled (handled elsewhere), and CH2 active.
 - **`output: - platform: opentherm` (`t_set`)** - the boiler's target flow water temperature, written by the PID controller below (min 45°C, auto max, `zero_means_zero` so 0 genuinely means "boiler off" rather than "no change").
-- **`climate: - platform: pid` (`main_climate`, "Central heating")** - the actual PID control loop. Takes the room temperature (`ch_room_temperature`, fed from `sensor.virtual_heating_temperature` in Home Assistant) and drives `t_set` to reach the target. Tuned to `kp: 0.7`, `ki: 0.005` after ESPHome's autotune function alone wasn't sufficient (see the "Thermostat" section above for the story on that).
+- **`climate: - platform: pid` (`main_climate`, "Central heating")** - the actual PID control loop. Takes the room temperature (`ch_room_temperature`, fed from `sensor.virtual_heating_temperature` in Home Assistant) and drives `t_set` to reach the target. Tuned to `kp: 0.7`, `ki: 0.005` after ESPHome's autotune function alone wasn't sufficient (see the [Thermostat](#thermostat) section above for the story on that).
 - **`sensor: - platform: opentherm`** - exposes all the OpenTherm boiler telemetry this specific boiler (Atag E325ec) supports: modulation level, CH water pressure, boiler/DHW/outside/return water temperatures, and the various setpoint bounds.
 - **`binary_sensor: - platform: opentherm`** - boiler fault/diagnostic flags, pump control, DHW presence, and setpoint transfer capability flags.
 - **`switch: - platform: opentherm`** - the three boiler-side toggles: CH enable, DHW enable, outside temperature compensation.
