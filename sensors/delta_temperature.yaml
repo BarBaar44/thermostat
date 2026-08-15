@@ -1,0 +1,133 @@
+# Delta Temperature sensor
+# ------------------------
+# Purpose:
+#   This template sensor is the "brain" that decides what setpoint the
+#   central heating boiler (climate.thermostat_central_heating) should
+#   actually be given at any moment, across a house with multiple
+#   independently-controlled rooms.
+#
+# How it fits into the overall system:
+#   Every room has its own "virtual thermostat" (climate.virtual_thermostat_*)
+#   that the user (or a schedule) sets a desired temperature on. Those virtual
+#   thermostats don't talk to the boiler directly - a boiler only has ONE
+#   setpoint, but the house has many rooms with potentially many different
+#   demands at once. This sensor scans all of them and picks a single,
+#   sensible setpoint to send to the boiler. It is consumed by the
+#   "TRV Setpoint Sync" automation (automations/trv_setpoint_sync.yaml),
+#   specifically the "Sent the Virtual Setpoint to the CV" step, which does:
+#     {{ (states('sensor.delta_temperature') | from_json).target | float(10) }}
+#
+# Output format:
+#   The sensor's state is a JSON string (not a plain number!), e.g.:
+#     {"area": "Living Room", "target": 18.0, "curr": 18.9, "delta": -0.9}
+#   Any automation reading this sensor MUST parse it with `from_json` first -
+#   feeding the raw JSON string into `| float` directly will fail/return a
+#   default, since it's not a bare number.
+#
+# Selection logic (in priority order):
+#   Only climate.virtual_thermostat_* entities currently in 'heat' mode are
+#   considered candidates. For each candidate, delta = target - current.
+#
+#   Rule 1/2 - genuine demand:
+#     Among rooms with a POSITIVE delta (i.e. actually calling for more heat
+#     because they're below their target), pick the one with the LARGEST
+#     unmet demand. This is the "normal" case: at least one room genuinely
+#     needs more heat, so that room's target is sent to the boiler.
+#
+#   Rule 3 - overshoot fallback:
+#     If NO room has positive demand (every heating room is already at or
+#     above its target), fall back to whichever room is furthest OVER its
+#     target, just so a value is always returned instead of nothing.
+#
+#   Rule 0 - "nothing really needs heat" guard (added after a real bug):
+#     Rule 3's fallback has a sharp edge: it still names an overshooting room
+#     as the "winner" and reports ITS target as if it were real demand. This
+#     caused a real problem: if a virtual thermostat gets stuck in 'heat'
+#     mode when it shouldn't be (e.g. a room's heating didn't get turned off
+#     when it should have - see the "Garden Door Heating Pause" automation's
+#     safety-net trigger for one such case: garden doors left open, living
+#     room actually at 25.5C while its stale target was still 18C), Rule 3
+#     would report {"area": "Living Room", "target": 18.0, ...} - and the
+#     automation would dutifully tell the boiler "target 18C", AS IF that
+#     were genuine demand, when the honest answer is that nothing in the
+#     house currently needs heat at all.
+#
+#     Rule 0 fixes this: after the loop finishes, if the winning candidate's
+#     delta is still <= 0 (meaning every candidate found was an overshoot,
+#     never genuine demand), the result is overridden to the safe default
+#     ("Off", target 10C - a frost-protection baseline) instead of passing
+#     along a misleading overshoot room. Rule 0 does NOT change behaviour
+#     when genuine demand exists anywhere - Rule 1/2 still wins exactly as
+#     before in that case.
+#
+#     Note: Rule 0 is a defense-in-depth fix. It stops a stuck thermostat
+#     from misleading the boiler, but it does not fix the ROOT CAUSE of a
+#     thermostat getting stuck in 'heat' in the first place - that's handled
+#     separately (e.g. by the garden-door safety-net automation trigger).
+#     Both fixes are complementary, not alternatives to one another.
+#
+# Update frequency:
+#   Recalculated every 10 seconds via the time_pattern trigger below. This is
+#   deliberately fast so the boiler setpoint reacts quickly to any room's
+#   virtual thermostat changing, without needing to be wired into every
+#   possible trigger source itself.
+
+- triggers:
+    - trigger: time_pattern
+      seconds: "/10"
+  sensor:
+    - name: "Delta Temperature"
+      unique_id: ce2b9e44-0146-4783-9f8c-3f6c0280d3f8
+      state: >
+        {% set fallback_curr = states('sensor.temperature_living_room_temperature') | float(18) %}
+
+        {% set best = namespace(
+          delta = -999,
+          deviation = 0,
+          area = 'Off',
+          target = 10,
+          curr = fallback_curr
+        ) %}
+
+        {% for clim in states.climate
+           if clim.entity_id.startswith('climate.virtual_thermostat_')
+           and clim.state == 'heat' %}
+
+          {% set target = clim.attributes.temperature | float(18) %}
+          {% set curr   = clim.attributes.current_temperature | float(18) %}
+          {% set delta  = (target - curr) | round(1) %}
+          {% set deviation = delta | abs %}
+
+          {# Rule 1+2: prefer the room with the largest genuine (positive) demand #}
+          {% if delta > 0 and delta > best.delta %}
+            {% set best.delta = delta %}
+            {% set best.deviation = deviation %}
+            {% set best.area = area_name(clim.entity_id) or 'Off' %}
+            {% set best.target = target %}
+            {% set best.curr = curr %}
+
+          {# Rule 3: fall back to the biggest overshoot only if no positive delta exists yet #}
+          {% elif best.delta <= 0 and deviation > best.deviation %}
+            {% set best.delta = delta %}
+            {% set best.deviation = deviation %}
+            {% set best.area = area_name(clim.entity_id) or 'Off' %}
+            {% set best.target = target %}
+            {% set best.curr = curr %}
+          {% endif %}
+        {% endfor %}
+
+        {# Rule 0: if nobody ever had genuine positive demand, don't report a
+           misleading overshoot room - report "Off" with the frost-protection
+           default instead. This only overrides the Rule 3 fallback outcome;
+           it never overrides genuine Rule 1/2 demand. #}
+        {% if best.delta <= 0 %}
+          {% set best.area = 'Off' %}
+          {% set best.target = 10 %}
+        {% endif %}
+
+        {{ {
+          "area":   best.area,
+          "target": best.target,
+          "curr":   best.curr,
+          "delta":  best.delta
+        } | to_json }}
