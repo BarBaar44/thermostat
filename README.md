@@ -1,3 +1,4 @@
+
 To remove the cloud dependency for my house heating, I decided to create this in Home Assistant. The requirements I set are:
 - No cloud dependency
 - Multi-room support
@@ -10,22 +11,20 @@ Nice to have:
 # Hardware
 
 ## Used boiler:
-- Atag E325ec - 2015. This boiler supports the OpenThem Protocol
+- Atag E325EC - 2015. This boiler supports the OpenTherm Protocol
 
 ## Thermostat
-- DIYLess OpenTherm thermostat with custom ESPHome config
+- [DIYLess OpenTherm thermostat](https://diyless.com/product/opentherm-thermostat?srsltid=AfmBOormPBHNAZ45YebkE3Il7vgdJ_GHKKCUzcF6QX03WaKtlIiR_Y78) with custom ESPHome config
 
-Because I want full control, I immediately pushed ESPHome onto the thermostat. But the DIYLess Thermostat has software on it that should work..
-
-I mostly got my config from XXX and XXX
+Because I want full control, I immediately pushed ESPHome onto the thermostat. But the DIYLess Thermostat has software on it that should work.
 
 As I already have an OpenTherm Gateway, I already knew what sensors my boiler supports. I basically trimmed down the sensor config towards the sensor my boiler supports.
 
 The hardest part of getting the thermostat dailed in is setting the PID-controller. ESPHome has an autotune function for this. But this only helped me so much. I ran the autotune once to get some initial values. It wasn't long before I found that with the parameters of the autotune, my boiler never got to the actual temperature. Digging around to find the actual meaning of those parameters, I was about to give up, but then I just asked ChatGPT for some help and it got me in the right direction. Awesome AI for once!
 
 ## Thermostatic Radiator Valve (TRV)
-- Sonoff TRVZB
-- Shelly TRV Blu
+- [Sonoff TRVZB](https://sonoff.tech/en-nl/products/sonoff-zigbee-thermostatic-radiator-valve?srsltid=AfmBOoqOOgjFyiwdsu4zjLnLMnoswNaaPmH9IqcZ7rdTpexA4DVSjDKT)
+- [Shelly TRV Blu](https://www.shelly.com/products/shelly-blu-trv-single-pack?srsltid=AfmBOooqX_GBCt0xQm6i7mDl32QgD_uiqZTU5LVj3VwcJ3pECvlg9b8W)
 
 Yes, you got that right. I use 2 kinds of TRV's. For two radiators, as I have limited space for the TRV's. The Sonoff TRV's just didn't fit, so I had to fall back to the Shelly's. The Shelly TRV's are very much like the Tado's. Both in dimension and in appearance. Here are the pros and cons.
 
@@ -49,7 +48,7 @@ Cons:
 - Still dependent on a third party
 - you need a stick to control them
 - You need another integration in HA (Shelly)
-- Very limited control.
+- No Zigbee control
 
 # Automations
 
@@ -65,8 +64,6 @@ All three automations share the same underlying design: one "virtual thermostat"
 - Office (`climate.virtual_thermostat_office`) → `climate.trv_office`
 - Master bedroom (`climate.virtual_thermostat_master_bedroom`) → 2x Shelly BLU TRV
 - Hallway (`climate.trv_hallway`) has no virtual thermostat of its own; it's derived from the living room setpoint (see below)
-
-> **Note:** `climate.thermostat_room_tim` was renamed to `climate.virtual_thermostat_room_tim` so it lines up with the naming convention used by every other room. All trigger/action references were updated accordingly.
 
 ## `automations/trv_setpoint_sync.yaml` - TRV Setpoint Sync
 
