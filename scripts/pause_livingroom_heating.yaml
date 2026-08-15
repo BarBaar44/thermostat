@@ -1,0 +1,29 @@
+alias: Pause Living Room Heating
+description: >-
+  Snapshots the living room heating state (virtual thermostat + physical
+  TRVs) into a scene, then turns the living room virtual thermostat off and
+  flags input_boolean.garden_heating_paused so heating can be resumed later.
+  Used when the garden doors are open (open window detection), and by the
+  Garden Door Heating Pause automation's safety-net check.
+sequence:
+  - action: scene.create
+    metadata: {}
+    data:
+      scene_id: heatinglivingroomscene
+      snapshot_entities:
+        - climate.trv_living_room_front
+        - climate.trv_kitchen
+        - climate.trv_living_room_rear
+        - climate.virtual_thermostat_living_room
+  - action: climate.turn_off
+    metadata: {}
+    target:
+      entity_id: climate.virtual_thermostat_living_room
+    data: {}
+  - action: input_boolean.turn_on
+    metadata: {}
+    target:
+      entity_id: input_boolean.garden_heating_paused
+    data: {}
+mode: single
+icon: mdi:radiator-off

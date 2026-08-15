@@ -1,0 +1,19 @@
+alias: Resume Living Room Heating
+description: >-
+  Restores the living room heating state from the snapshot scene taken by
+  Pause Living Room Heating, and clears input_boolean.garden_heating_paused.
+  Used when the garden doors close again while still within the daily
+  heating schedule.
+sequence:
+  - action: scene.turn_on
+    metadata: {}
+    target:
+      entity_id: scene.heatinglivingroomscene
+    data: {}
+  - action: input_boolean.turn_off
+    metadata: {}
+    target:
+      entity_id: input_boolean.garden_heating_paused
+    data: {}
+mode: single
+icon: mdi:radiator

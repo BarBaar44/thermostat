@@ -1,0 +1,265 @@
+alias: Heating Schedule
+description: >-
+  Daily start/stop scheduling for the house heating, plus the passive-solar
+  "sun assist" logic. Split out from the old monolithic "House warming"
+  automation for isolation/traceability - see README.md.
+triggers:
+  - trigger: time
+    at: '07:30:00'
+    weekday:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+    id: Weekdays Start
+  - trigger: time
+    at: '08:00:00'
+    id: Weekend Start
+    weekday:
+      - sat
+      - sun
+  - trigger: time
+    at: '20:00:00'
+    id: Schedule stop
+  - trigger: state
+    entity_id:
+      - input_boolean.somebody_home
+    from:
+      - 'off'
+    id: Arriving Home
+  - trigger: state
+    entity_id:
+      - input_boolean.somebody_home
+    from:
+      - 'on'
+    id: Leaving Home
+  - trigger: time
+    at: input_datetime.sun_check_time
+    id: Sun check
+conditions: []
+actions:
+  - choose:
+      - conditions:
+          - condition: and
+            conditions:
+              - condition: state
+                entity_id: input_boolean.somebody_home
+                state:
+                  - 'on'
+              - condition: trigger
+                id:
+                  - Weekdays Start
+                  - Arriving Home
+              - condition: time
+                before: '20:00:00'
+        sequence:
+          - action: weather.get_forecasts
+            target:
+              entity_id: weather.forecast_home
+            data:
+              type: daily
+            response_variable: forecast_result
+          - variables:
+              today_forecast: '{{ forecast_result[''weather.forecast_home''].forecast[0] }}'
+              sunny_and_mild: >-
+                {{ today_forecast.condition in ['sunny', 'clear-night'] and
+                (today_forecast.temperature | float(0)) > 12 }}
+          - if:
+              - condition: template
+                value_template: '{{ sunny_and_mild }}'
+            then:
+              - action: climate.set_temperature
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  temperature: 15
+                  hvac_mode: heat
+              - action: switch.turn_on
+                metadata: {}
+                target:
+                  entity_id: switch.main_thermostat_central_heating_enabled
+                data: {}
+              - action: input_datetime.set_datetime
+                metadata: {}
+                target:
+                  entity_id: input_datetime.sun_check_time
+                data:
+                  timestamp: '{{ (now() + timedelta(hours=1)).timestamp() }}'
+              - action: input_boolean.turn_on
+                metadata: {}
+                target:
+                  entity_id: input_boolean.sun_assist_pending
+                data: {}
+            else:
+              - action: climate.set_temperature
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  temperature: 18
+                  hvac_mode: heat
+              - action: climate.set_hvac_mode
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  hvac_mode: heat
+              - action: switch.turn_on
+                metadata: {}
+                target:
+                  entity_id: switch.main_thermostat_central_heating_enabled
+                data: {}
+        alias: Start Weekdays or Arriving Home
+      - conditions:
+          - condition: and
+            conditions:
+              - condition: trigger
+                id:
+                  - Weekend Start
+              - condition: state
+                entity_id: input_boolean.somebody_home
+                state:
+                  - 'on'
+        sequence:
+          - action: weather.get_forecasts
+            target:
+              entity_id: weather.forecast_home
+            data:
+              type: daily
+            response_variable: forecast_result
+          - variables:
+              today_forecast: '{{ forecast_result[''weather.forecast_home''].forecast[0] }}'
+              sunny_and_mild: >-
+                {{ today_forecast.condition in ['sunny', 'clear-night'] and
+                (today_forecast.temperature | float(0)) > 12 }}
+          - if:
+              - condition: template
+                value_template: '{{ sunny_and_mild }}'
+            then:
+              - action: climate.set_temperature
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  temperature: 15
+                  hvac_mode: heat
+              - action: switch.turn_on
+                metadata: {}
+                target:
+                  entity_id: switch.main_thermostat_central_heating_enabled
+                data: {}
+              - action: input_datetime.set_datetime
+                metadata: {}
+                target:
+                  entity_id: input_datetime.sun_check_time
+                data:
+                  timestamp: '{{ (now() + timedelta(hours=1)).timestamp() }}'
+              - action: input_boolean.turn_on
+                metadata: {}
+                target:
+                  entity_id: input_boolean.sun_assist_pending
+                data: {}
+            else:
+              - action: climate.set_temperature
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  temperature: 18
+                  hvac_mode: heat
+              - action: switch.turn_on
+                metadata: {}
+                target:
+                  entity_id: switch.main_thermostat_central_heating_enabled
+                data: {}
+              - action: climate.set_hvac_mode
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  hvac_mode: heat
+        alias: Start weekend
+      - conditions:
+          - condition: trigger
+            id:
+              - Sun check
+          - condition: state
+            entity_id: input_boolean.sun_assist_pending
+            state: 'on'
+        sequence:
+          - variables:
+              room_temp: >-
+                {{ state_attr('climate.virtual_thermostat_living_room',
+                'current_temperature') | float(0) }}
+          - if:
+              - condition: template
+                value_template: '{{ room_temp < 16 }}'
+            then:
+              - action: climate.set_temperature
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  temperature: 18
+                  hvac_mode: heat
+              - action: climate.set_hvac_mode
+                metadata: {}
+                target:
+                  entity_id: climate.virtual_thermostat_living_room
+                data:
+                  hvac_mode: heat
+              - action: switch.turn_on
+                metadata: {}
+                target:
+                  entity_id: switch.main_thermostat_central_heating_enabled
+                data: {}
+          - action: input_boolean.turn_off
+            metadata: {}
+            target:
+              entity_id: input_boolean.sun_assist_pending
+            data: {}
+        alias: Sun check - kick in full heating if still cold
+      - conditions:
+          - condition: trigger
+            id:
+              - Schedule stop
+              - Leaving Home
+        sequence:
+          - action: climate.set_temperature
+            metadata: {}
+            target:
+              entity_id:
+                - climate.virtual_thermostat_living_room
+                - climate.virtual_thermostat_master_bedroom
+                - climate.virtual_thermostat_room_gijs
+                - climate.trv_hallway
+                - climate.trv_office
+                - climate.shellyblutrv_f84477345a73
+                - climate.shellyblutrv_f8447725a8d5
+                - climate.virtual_thermostat_room_tim
+                - climate.virtual_thermostat_sports_room
+            data:
+              temperature: 10
+              hvac_mode: 'off'
+            continue_on_error: true
+          - action: switch.turn_off
+            metadata: {}
+            target:
+              entity_id: switch.main_thermostat_central_heating_enabled
+            data: {}
+          - action: input_boolean.turn_off
+            metadata: {}
+            target:
+              entity_id: input_boolean.garden_heating_paused
+            data: {}
+          - action: input_boolean.turn_off
+            metadata: {}
+            target:
+              entity_id: input_boolean.sun_assist_pending
+            data: {}
+        alias: Stop heating after 20:00 or Leaving Home
+    continue_on_error: true
+mode: queued
+max: 10

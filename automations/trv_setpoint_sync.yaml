@@ -1,0 +1,135 @@
+alias: TRV Setpoint Sync
+description: >-
+  Keeps the physical TRVs (and the central heating boiler) in sync with the
+  per-room virtual thermostats. Split out from the old monolithic
+  "House warming" automation for isolation/traceability - see README.md.
+triggers:
+  - trigger: state
+    entity_id:
+      - climate.virtual_thermostat_living_room
+      - climate.virtual_thermostat_room_gijs
+      - climate.virtual_thermostat_sports_room
+      - climate.virtual_thermostat_office
+      - climate.virtual_thermostat_master_bedroom
+      - climate.virtual_thermostat_room_tim
+    attribute: temperature
+    id: Setpoint change
+conditions: []
+actions:
+  - alias: Sync Virtual setpoint Living Room to Living Room and Hallway TRV's
+    if:
+      - condition: template
+        value_template: >-
+          {{ trigger.entity_id == 'climate.virtual_thermostat_living_room'
+             and state_attr('climate.virtual_thermostat_living_room', 'temperature') is not none }}
+    then:
+      - action: climate.set_temperature
+        metadata: {}
+        target:
+          entity_id:
+            - climate.trv_kitchen
+            - climate.trv_living_room_rear
+            - climate.trv_living_room_front
+        data:
+          temperature: >-
+            {{ state_attr('climate.virtual_thermostat_living_room',
+            'temperature') + 1 }}
+      - alias: Sync Virtual setpoint Living Room to Hallway TRV
+        action: climate.set_temperature
+        metadata: {}
+        target:
+          entity_id: climate.trv_hallway
+        data:
+          temperature: >-
+            {{ [state_attr('climate.virtual_thermostat_living_room',
+            'temperature') - 8, 5] | max }}
+  - alias: Sent the Virtual Setpoint to the CV
+    action: climate.set_temperature
+    metadata: {}
+    target:
+      entity_id: climate.thermostat_central_heating
+    data:
+      temperature: >-
+        {{ (states('sensor.delta_temperature') | from_json).target | float(10) }}
+  - alias: Sync Virtual setpoint Gijs to Room Gijs TRV's
+    if:
+      - condition: template
+        value_template: >-
+          {{ trigger.entity_id == 'climate.virtual_thermostat_room_gijs'
+             and state_attr('climate.virtual_thermostat_room_gijs', 'temperature') is not none }}
+    then:
+      - action: climate.set_temperature
+        metadata: {}
+        data:
+          temperature: >-
+            {{ state_attr('climate.virtual_thermostat_room_gijs',
+            'temperature') + 1 }}
+        target:
+          entity_id: climate.trv_room_gijs
+  - alias: Sync Virtual setpoint Tim to Room Tim TRV's
+    if:
+      - condition: template
+        value_template: >-
+          {{ trigger.entity_id == 'climate.virtual_thermostat_room_tim'
+             and state_attr('climate.virtual_thermostat_room_tim', 'temperature') is not none }}
+    then:
+      - action: climate.set_temperature
+        metadata: {}
+        data:
+          temperature: >-
+            {{ state_attr('climate.virtual_thermostat_room_tim', 'temperature') + 1
+            }}
+        target:
+          entity_id:
+            - climate.trv_room_tim
+  - alias: Sync Virtual setpoint Sports Room to Sports Room TRV
+    if:
+      - condition: template
+        value_template: >-
+          {{ trigger.entity_id == 'climate.virtual_thermostat_sports_room'
+             and state_attr('climate.virtual_thermostat_sports_room', 'temperature') is not none }}
+    then:
+      - action: climate.set_temperature
+        metadata: {}
+        data:
+          temperature: >-
+            {{ state_attr('climate.virtual_thermostat_sports_room',
+            'temperature') + 1 }}
+        target:
+          entity_id:
+            - climate.trv_sports_room
+  - alias: Sync Virtual setpoint Office to Office TRV's
+    if:
+      - condition: template
+        value_template: >-
+          {{ trigger.entity_id == 'climate.virtual_thermostat_office'
+             and state_attr('climate.virtual_thermostat_office', 'temperature') is not none }}
+    then:
+      - action: climate.set_temperature
+        metadata: {}
+        data:
+          temperature: >-
+            {{ state_attr('climate.virtual_thermostat_office',
+            'temperature') + 1 }}
+        target:
+          entity_id:
+            - climate.trv_office
+  - alias: Sync Virtual setpoint Master Bedroom to Master Bedroom TRV's
+    if:
+      - condition: template
+        value_template: >-
+          {{ trigger.entity_id == 'climate.virtual_thermostat_master_bedroom'
+             and state_attr('climate.virtual_thermostat_master_bedroom', 'temperature') is not none }}
+    then:
+      - action: climate.set_temperature
+        metadata: {}
+        data:
+          temperature: >-
+            {{ state_attr('climate.virtual_thermostat_master_bedroom',
+            'temperature') + 1 }}
+        target:
+          entity_id:
+            - climate.shellyblutrv_f84477345a73
+            - climate.shellyblutrv_f8447725a8d5
+mode: queued
+max: 10
