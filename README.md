@@ -13,7 +13,7 @@ Nice to have:
 - Atag E325ec - 2015. This boiler supports the OpenThem Protocol
 
 ## Thermostat
-- DIYLess OpenTherm thermostat with custom ESPHome config
+- DIYLess OpenTherm thermostat with custom ESPHome config: [`thermostat.yaml`](thermostat.yaml)
 
 Because I want full control, I immediately pushed ESPHome onto the thermostat. But the DIYLess Thermostat has software on it that should work..
 
@@ -22,6 +22,8 @@ I mostly got my config from XXX and XXX
 As I already have an OpenTherm Gateway, I already knew what sensors my boiler supports. I basically trimmed down the sensor config towards the sensor my boiler supports.
 
 The hardest part of getting the thermostat dailed in is setting the PID-controller. ESPHome has an autotune function for this. But this only helped me so much. I ran the autotune once to get some initial values. It wasn't long before I found that with the parameters of the autotune, my boiler never got to the actual temperature. Digging around to find the actual meaning of those parameters, I was about to give up, but then I just asked ChatGPT for some help and it got me in the right direction. Awesome AI for once!
+
+The final PID values landed on in [`thermostat.yaml`](thermostat.yaml) are `kp: 0.7`, `ki: 0.005` (see the `climate: - platform: pid` section), driving the OpenTherm `t_set` output. Room temperature is fed in from Home Assistant (`sensor.virtual_heating_temperature`) with a 1s heartbeat filter so the PID controller gets frequent updates even when the underlying sensor value hasn't changed.
 
 ## Thermostatic Radiator Valve (TRV)
 - Sonoff TRVZB
@@ -55,10 +57,11 @@ Cons:
 
 The whole heating system is built around one idea: each room/zone gets its own **virtual thermostat** (`climate.virtual_thermostat_*`) that acts as the single source of truth for "what temperature does this room want to be". Nothing else in the system is a source of truth for desired temperature - not the physical TRVs, not the boiler. Everything downstream (physical TRVs, the boiler setpoint) is kept in sync *with* the virtual thermostats, never the other way around.
 
-This is split into three automations, two shared scripts, and one template sensor:
+This is split into three automations, two shared scripts, and one template sensor, on top of the ESPHome thermostat firmware itself:
 
 | File | Type | Responsibility |
 |---|---|---|
+| `thermostat.yaml` | ESPHome config | The physical OpenTherm thermostat device firmware - PID controller driving the boiler's `t_set`, plus all OpenTherm sensors/switches/binary_sensors |
 | `automations/heating_schedule.yaml` | Automation | Daily start/stop scheduling + passive-solar "sun assist" logic |
 | `automations/trv_setpoint_sync.yaml` | Automation | Keeps physical TRVs + the boiler in sync with the virtual thermostats |
 | `automations/garden_door_heating_pause.yaml` | Automation | Open-window/door detection for the living room garden doors |
@@ -78,6 +81,19 @@ This is split into three automations, two shared scripts, and one template senso
 - Hallway (`climate.trv_hallway`) has no virtual thermostat of its own; it's derived from the living room setpoint (see below)
 
 > **Naming tip if you're copying this approach:** name every virtual thermostat with a consistent prefix (here, `climate.virtual_thermostat_*`). Both `trv_setpoint_sync.yaml`'s trigger list and `delta_temperature.yaml`'s `startswith('climate.virtual_thermostat_')` filter rely on that consistent prefix to find all rooms automatically. This repo previously had one room (`climate.thermostat_room_tim`) that didn't follow the convention, which caused it to be silently invisible to the Delta Temperature sensor's room-selection logic until it was renamed to `climate.virtual_thermostat_room_tim`.
+
+# ESPHome thermostat firmware (`thermostat.yaml`)
+
+This is the actual device config flashed to the DIYLess OpenTherm thermostat. It's the physical bridge between Home Assistant and the boiler over the OpenTherm bus:
+
+- **`opentherm:`** - configures the OpenTherm master on GPIO pins 21 (in) / 22 (out), with central heating enabled, DHW (domestic hot water) disabled (handled elsewhere), and CH2 active.
+- **`output: - platform: opentherm` (`t_set`)** - the boiler's target flow water temperature, written by the PID controller below (min 45°C, auto max, `zero_means_zero` so 0 genuinely means "boiler off" rather than "no change").
+- **`climate: - platform: pid` (`main_climate`, "Central heating")** - the actual PID control loop. Takes the room temperature (`ch_room_temperature`, fed from `sensor.virtual_heating_temperature` in Home Assistant) and drives `t_set` to reach the target. Tuned to `kp: 0.7`, `ki: 0.005` after ESPHome's autotune function alone wasn't sufficient (see the "Thermostat" section above for the story on that).
+- **`sensor: - platform: opentherm`** - exposes all the OpenTherm boiler telemetry this specific boiler (Atag E325ec) supports: modulation level, CH water pressure, boiler/DHW/outside/return water temperatures, and the various setpoint bounds.
+- **`binary_sensor: - platform: opentherm`** - boiler fault/diagnostic flags, pump control, DHW presence, and setpoint transfer capability flags.
+- **`switch: - platform: opentherm`** - the three boiler-side toggles: CH enable, DHW enable, outside temperature compensation.
+
+This firmware is what the rest of the repo (the automations, scripts, and Delta Temperature sensor) ultimately feeds - all of `climate.thermostat_central_heating`'s setpoint changes from `automations/trv_setpoint_sync.yaml` flow down into this device's PID loop, which then talks OpenTherm to the actual boiler.
 
 # Automations
 
