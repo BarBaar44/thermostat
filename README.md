@@ -76,6 +76,8 @@ Each room's actual current temperature (the `current_temperature` fed into its v
 
 Out of the box, this sensor only speaks Bluetooth Low Energy with Xiaomi's own (or a custom BLE) firmware, which would mean relying on a BLE gateway/proxy per room - not ideal for a fully local, single-mesh setup. Instead, I reflashed these with **custom Zigbee firmware**, so they join the same Zigbee2MQTT network as the TRVs and other Zigbee devices in the house - one consistent local mesh, no separate Bluetooth infrastructure needed just for temperature readings.
 
+> **Flashing instructions:** the [Zigbee2MQTT device page linked above](https://www.zigbee2mqtt.io/devices/LYWSD03MMC-z.html) documents exactly how to reflash this sensor from its stock BLE firmware to the custom Zigbee firmware - that's the reference I followed, so I won't duplicate the steps here.
+
 ---
 
 # System overview
