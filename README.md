@@ -60,7 +60,7 @@ This is the main Home Assistant automation that ties the whole multi-room heatin
 It uses one "virtual thermostat" per room/zone (`climate.virtual_thermostat_*`) as the single source of truth for the desired room temperature, and then keeps the physical TRVs and the boiler in sync with those virtual thermostats.
 
 ### Rooms / zones covered
-- Living room (`climate.virtual_thermostat_living_room`) → TRVs: kitchen, living room front, living room rear
+- Living room (`climate.virtual_thermostat_living_room`) → TRVs: kitchen, living room front, living room rear (+ derives the hallway TRV setpoint)
 - Gijs' room (`climate.virtual_thermostat_room_gijs`) → `climate.trv_room_gijs`
 - Tim's room (`climate.virtual_thermostat_room_tim`) → `climate.trv_room_tim`
 - Sports room (`climate.virtual_thermostat_sports_room`) → `climate.trv_sports_room`
@@ -68,12 +68,18 @@ It uses one "virtual thermostat" per room/zone (`climate.virtual_thermostat_*`) 
 - Master bedroom (`climate.virtual_thermostat_master_bedroom`) → 2x Shelly BLU TRV
 - Hallway (`climate.trv_hallway`) has no virtual thermostat of its own; it's derived from the living room setpoint (see below)
 
+> **Note:** `climate.thermostat_room_tim` was renamed to `climate.virtual_thermostat_room_tim` so it lines up with the naming convention used by every other room. All trigger/action references in the automation were updated accordingly, including the `Setpoint change` trigger list, the Tim TRV sync block, and the "Stop heating" target list.
+
 ### What it does
 
 **1. Setpoint change (`id: Setpoint change`)**
-Triggered whenever the `temperature` attribute of any virtual thermostat changes. Pushes that setpoint out to the matching physical TRV(s), and pushes the overall virtual heating setpoint to `climate.thermostat_central_heating` (the boiler).
+Triggered whenever the `temperature` attribute of any virtual thermostat changes. Each of the six room-sync actions is individually gated by an `if:` condition checking `trigger.entity_id == <that room's virtual thermostat>` **and** that its `temperature` attribute `is not none`, before pushing the new setpoint out to that room's physical TRV(s) (with a **+1°C** offset — TRVs tend to read warmer than the room actually is, since they sit close to the radiator).
 
-Because TRVs tend to read warmer than the room actually is (they sit close to the radiator), most rooms get the virtual setpoint **+1°C** when applied to the TRV, to compensate. The hallway is a special case: since it has no thermostat of its own, its TRV setpoint is derived from the living room setpoint **minus 8°C** (with a floor of 5°C), so it stays comfortably lower than the living room instead of overheating.
+This per-room gating was added after a production bug: the sequence used to unconditionally re-sync *all six* rooms on every single setpoint change, regardless of which thermostat actually fired the trigger. If any one of those six virtual thermostats was `off` (and therefore had no `temperature` attribute set), reading `None + 1` crashed the whole sequence — silently skipping every sync step listed after the crash point. Scoping each sync to its own trigger, with an explicit null-check, fixed this and also cut down on redundant service calls to unrelated TRVs.
+
+The hallway is a special case: since it has no thermostat of its own, its TRV setpoint is derived from the living room setpoint **minus 8°C** (with a floor of 5°C), so it stays comfortably lower than the living room instead of overheating. It's synced together with the living room TRVs since it depends on the same source value.
+
+This step also pushes the overall central heating setpoint to `climate.thermostat_central_heating` (the boiler), sourced from the `sensor.delta_temperature` helper (see below) — parsed with `from_json` to extract its `.target` field, with a safe `float(10)` fallback.
 
 **2. Start of day — weekdays (`Weekdays Start` @ 07:30) or someone arriving home (`Arriving Home`)**
 Only runs while `input_boolean.somebody_home` is on and before 20:00. It checks tomorrow's... actually today's daily weather forecast (`weather.forecast_home`):
@@ -98,11 +104,40 @@ If heating was paused due to open doors, restores the previously saved scene (br
 **8. Garden doors closed, after schedule stop (after 20:00)**
 If the doors close after the 20:00 schedule stop already happened, it doesn't resume heating — it explicitly sets the living room to 10°C / off and clears the paused flag, so the room doesn't accidentally start heating again outside the schedule.
 
+**9. Garden doors safety check (`time_pattern`, every 5 minutes)**
+A self-healing safety net for step 6. HA's `state` trigger with `from`/`to` only fires on the *exact moment* of an `off → on` transition — if that transition is missed (e.g. Home Assistant restarts, or the automation/underlying template sensor reloads, while the garden doors are *already* open), step 6 never fires and the living room can stay heating indefinitely with the doors open. This trigger re-checks every 5 minutes: if the doors are currently open **and** the living room virtual thermostat is still in `heat`, it runs the same scene-snapshot + turn-off + pause-flag sequence as step 6, so the system self-corrects within 5 minutes regardless of *why* the original edge trigger was missed.
+
 ### Helper entities used
 - `input_boolean.somebody_home` — presence flag driving the daily start/stop logic
 - `input_boolean.sun_assist_pending` — tracks whether a "sunny start" is awaiting its 1‑hour follow-up check
 - `input_boolean.garden_heating_paused` — tracks whether living room heating was paused due to open garden doors
 - `input_datetime.sun_check_time` — dynamically scheduled time for the follow-up sun check
-- `binary_sensor.backdoors_garden` — open/closed sensor for the garden doors (open window detection)
+- `binary_sensor.backdoors_garden` — open/closed sensor for the garden doors (open window detection); combines `binary_sensor.door_sensor_garden_doors_contact` and `binary_sensor.door_sensor_kitchen_door_contact`
 - `switch.main_thermostat_central_heating_enabled` — master enable/disable switch for the boiler
 - `weather.forecast_home` — used to decide whether to rely on passive solar heating in the morning
+- `sensor.delta_temperature` — see below; drives the central heating boiler setpoint
+
+## Delta Temperature sensor (`deltaTemperature`)
+
+A template sensor helper (`sensor.delta_temperature`) that recalculates every 10 seconds (`time_pattern`, `seconds: "/10"`) and acts as the "brain" deciding what setpoint the central heating boiler should actually be given.
+
+### What it does
+It scans every `climate.virtual_thermostat_*` entity currently in `heat` mode and computes `delta = target - current_temperature` for each:
+- **Rule 1/2 — genuine demand:** among rooms with a *positive* delta (i.e. actually calling for more heat), it picks the one with the **largest** unmet demand.
+- **Rule 3 — overshoot fallback:** if no room has positive demand (everything is at or above its target), it falls back to whichever room is furthest *over*-target, just so the sensor always returns a value.
+- **Default:** if no virtual thermostat is in `heat` mode at all, it reports `area: "Off", target: 10` (frost-protection baseline).
+
+Output is a JSON string, e.g.:
+```json
+{"area": "Living Room", "target": 18.0, "curr": 18.9, "delta": -0.9}
+```
+
+This is consumed by the `housewarming.yaml` automation's "Sent the Virtual Setpoint to the CV" step, which parses it with `from_json` and sends `.target` to `climate.thermostat_central_heating`.
+
+### ⚠️ Known limitation (not yet fixed)
+Rule 3's overshoot fallback currently reports the overshooting room as the "winner" with its stale target — even when the underlying issue is that a virtual thermostat is stuck in `heat` mode when it shouldn't be (e.g. living room heating not stopping despite the garden doors being open, at 25°C+, target 18°C). In that scenario the boiler is told "target 18°C" as if it were real demand, when the honest answer is that nothing in the house currently has genuine heating demand.
+
+**Planned fix ("Rule 0"):** after the main loop, if `best.delta <= 0` (meaning every candidate found was an overshoot fallback, not real demand), override the result to `area: "Off", target: 10` before emitting JSON, instead of passing along a misleading overshoot room. This is a defense-in-depth fix — it doesn't replace fixing the root cause of a thermostat getting stuck in `heat` (see the housewarming.yaml safety-net trigger above for that), but it stops that class of bug from ever reaching the boiler.
+
+### Possible future refactor
+`housewarming.yaml` has grown fairly large (9 triggers, multiple unrelated concerns in one file). A cleaner split under consideration: separate it into 3 smaller automations — **Heating Schedule** (start/stop/sun-assist), **TRV Setpoint Sync** (the per-room virtual→physical sync), and **Garden Door Heating Pause** (open/close/safety-net) — with the repeated "pause/resume living room heating" logic pulled into shared scripts (`script.pause_livingroom_heating` / `script.resume_livingroom_heating`) to avoid duplicating the scene-snapshot sequence in multiple places.
