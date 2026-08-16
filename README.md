@@ -18,6 +18,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
   - [Thermostatic Radiator Valves (TRVs)](#thermostatic-radiator-valves-trvs)
   - [Room Temperature Sensors](#room-temperature-sensors)
 - [System Overview](#system-overview)
+  - [How Multiple Rooms Heat at Once](#how-multiple-rooms-heat-at-once-the-two-tier-control-model)
   - [Rooms / Zones Covered](#rooms--zones-covered)
 - [ESPHome Thermostat Firmware (`thermostat.yaml`)](#esphome-thermostat-firmware-thermostatyaml)
 - [Automations](#automations)
@@ -98,6 +99,20 @@ This is split into three automations, two shared scripts, and one template senso
 
 > **History note:** this used to be one large automation, `housewarming.yaml`, with all of the above logic inline. It was split up for better isolation (a bug in door detection can no longer break the daily schedule) and so each concern gets its own trace history in Home Assistant. `housewarming.yaml` and the original `deltaTemperature` file are both kept in the repo only as deprecated historical references - see the deprecation notice at the top of each file. If you're setting this up fresh, use the files in `automations/`, `scripts/`, and `sensors/` instead.
 
+## How multiple rooms heat at once (the two-tier control model)
+
+A single boiler only has **one** flow water temperature (`t_set`) - it cannot natively know or care that "the office wants 20°C while the sports room wants 16°C" at the same time. This system resolves that with two independent control tiers that work together:
+
+**Tier 1 - the boiler's flow temperature (one value, house-wide):**
+The `sensor.delta_temperature` helper looks at every room currently calling for heat and picks **whichever room has the biggest unmet demand** (the largest `target - current` gap) - see the [Delta Temperature Sensor](#delta-temperature-sensor-sensorsdelta_temperatureyaml) section below for the full rule set. That single "winning" room's target is what gets sent to the boiler as its flow water temperature. In other words: **the boiler is only ever tuned to satisfy the room that needs heat the most.**
+
+**Tier 2 - each room's own TRV (many values, one per room):**
+This is the part that makes multi-room heating actually work: **every room's physical TRV(s) are controlled entirely independently, by that room's own virtual thermostat setpoint** - not by whichever room "won" the boiler race. A TRV is just a valve: as long as the boiler is producing hot enough flow water to satisfy *that TRV's own* setpoint, the TRV will open and let heat through into its room, regardless of which room's demand happened to set the boiler's flow temperature in the first place.
+
+**Putting it together:** say the Office has the highest demand (biggest gap between target and current temperature) and "wins" - its target becomes the boiler's flow temperature. Because the boiler is now producing water hot enough for the Office, every *other* room whose own target is at or below that same flow temperature will **also** heat perfectly normally at the same time - their TRVs simply open, since the water arriving at their radiator is already warm enough to satisfy their own setpoint. Only a room asking for a *higher* temperature than the current winner would be under-served until it takes over as the new winner (which happens automatically, every 10 seconds, as `sensor.delta_temperature` recalculates).
+
+This is precisely why the system doesn't need to explicitly coordinate "who gets to heat now" - the boiler tier picks a flow temperature high enough for the neediest room, and the TRV tier lets every other qualifying room ride along on that same hot water supply, entirely independently, using only its own thermostat's setpoint as the deciding factor.
+
 ### Rooms / zones covered
 - Living room (`climate.virtual_thermostat_living_room`) → TRVs: kitchen, living room front, living room rear (+ derives the hallway TRV setpoint)
 - Gijs' room (`climate.virtual_thermostat_room_gijs`) → `climate.trv_room_gijs`
@@ -120,13 +135,15 @@ This is the actual device config flashed to the DIYLess OpenTherm thermostat. It
 - **`binary_sensor: - platform: opentherm`** - boiler fault/diagnostic flags, pump control, DHW presence, and setpoint transfer capability flags.
 - **`switch: - platform: opentherm`** - the three boiler-side toggles: CH enable, DHW enable, outside temperature compensation.
 
-This firmware is what the rest of the repo (the automations, scripts, and Delta Temperature sensor) ultimately feeds - all of `climate.thermostat_central_heating`'s setpoint changes from `automations/trv_setpoint_sync.yaml` flow down into this device's PID loop, which then talks OpenTherm to the actual boiler.
+This firmware is what the rest of the repo (the automations, scripts, and Delta Temperature sensor) ultimately feeds - all of `climate.thermostat_central_heating`'s setpoint changes from `automations/trv_setpoint_sync.yaml` flow down into this device's PID loop, which then talks OpenTherm to the actual boiler. This is the Tier 1 half of the two-tier model described above - the PID loop's whole job is to get the boiler's actual flow water temperature to match whatever the "winning" room currently demands.
 
 # Automations
 
 ## `automations/trv_setpoint_sync.yaml` - TRV Setpoint Sync
 
 Triggered whenever the `temperature` attribute of any virtual thermostat changes. Each of the six room-sync actions is individually gated by an `if:` condition checking `trigger.entity_id == <that room's virtual thermostat>` **and** that its `temperature` attribute `is not none`, before pushing the new setpoint out to that room's physical TRV(s) (with a **+1°C** offset - TRVs tend to read warmer than the room actually is, since they sit close to the radiator).
+
+This is the Tier 2 half of the two-tier model described in [System overview](#how-multiple-rooms-heat-at-once-the-two-tier-control-model) above: each room's TRV(s) are synced purely from that room's own virtual thermostat, completely independently of whichever room is currently winning the boiler's flow-temperature race.
 
 This per-room gating was added after a production bug: the sequence used to unconditionally re-sync *all six* rooms on every single setpoint change, regardless of which thermostat actually fired the trigger. If any one of those six virtual thermostats was `off` (and therefore had no `temperature` attribute set), reading `None + 1` crashed the whole sequence - silently skipping every sync step listed after the crash point. Scoping each sync to its own trigger, with an explicit null-check, fixed this and also cut down on redundant service calls to unrelated TRVs.
 
@@ -191,13 +208,15 @@ Extracted from what used to be duplicated scene-snapshot/turn-off/turn-on sequen
 
 A template sensor helper (`sensor.delta_temperature`) that recalculates every 10 seconds (`time_pattern`, `seconds: "/10"`) and acts as the "brain" deciding what setpoint the central heating boiler should actually be given, across a house with multiple independently-controlled rooms that a single-setpoint boiler cannot natively understand.
 
+This sensor is **only** responsible for Tier 1 of the [two-tier control model](#how-multiple-rooms-heat-at-once-the-two-tier-control-model) described above - picking the boiler's flow temperature. It has no influence over which rooms actually receive heat; that's entirely down to each room's own TRV(s), independently, in Tier 2.
+
 ### Why this is needed
 A boiler only has one setpoint. But this system has many rooms, each with their own virtual thermostat, each potentially wanting a different temperature at any given moment. Something has to reduce "many rooms, many demands" down to "one number the boiler understands" - that's this sensor's entire job.
 
 ### How it decides
 It scans every `climate.virtual_thermostat_*` entity currently in `heat` mode and computes `delta = target - current_temperature` for each:
 
-- **Rule 1/2 - genuine demand:** among rooms with a *positive* delta (i.e. actually calling for more heat because they're below their target), it picks the one with the **largest** unmet demand. That room's target becomes the boiler's setpoint.
+- **Rule 1/2 - genuine demand:** among rooms with a *positive* delta (i.e. actually calling for more heat because they're below their target), it picks the one with the **largest** unmet demand. That room's target becomes the boiler's setpoint. This is "the room with the highest demand wins and drives the boiler" - but winning only sets the boiler's flow temperature; it doesn't stop any other room from heating too (see Tier 2 above).
 - **Rule 3 - overshoot fallback:** if no room has positive demand (every heating room is already at or above its target), it falls back to whichever room is furthest *over*-target, just so the sensor always returns a value instead of nothing.
 - **Rule 0 - "nothing really needs heat" guard:** if the winning candidate from the loop still has `delta <= 0` (meaning every candidate was an overshoot, never genuine demand), the result is overridden to `area: "Off", target: 10` (a frost-protection baseline) instead of reporting a misleading overshoot room's stale target as if it were real demand. Rule 0 never overrides genuine Rule 1/2 demand - it only kicks in when nothing in the house actually needs heat.
 - **Default:** if no virtual thermostat is in `heat` mode at all, it reports `area: "Off", target: 10` directly (same frost-protection baseline).
