@@ -40,7 +40,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
 | Thermostat | DIYLess OpenTherm thermostat, reflashed with custom ESPHome | Full local control over the PID loop and OpenTherm bus, instead of relying on the stock firmware |
 | TRVs (radiators) | Sonoff TRVZB + Shelly TRV Blu (mixed) | Sonoff where it physically fits; Shelly where space is tight |
 | Room temperature sensors | Xiaomi/Aqara [LYWSD03MMC](https://www.zigbee2mqtt.io/devices/LYWSD03MMC-z.html), reflashed with custom Zigbee firmware | Cheap, tiny, battery-powered - and made fully local by replacing the stock Bluetooth/Xiaomi firmware with a Zigbee one |
-| Radiator booster fans | Custom "DBE" ESPHome + MOSFET board, per-radiator | Forces convective airflow across radiator fins to extract more heat per °C of water temperature - see [Radiator Booster Fans](#radiator-booster-fans-dbe) below |
+| Radiator booster fans | Custom "DBE" ESPHome + relay-switched fan driver board, per-radiator | Forces convective airflow across radiator fins to extract more heat per °C of water temperature - see [Radiator Booster Fans](#radiator-booster-fans-dbe) below |
 
 ## Boiler
 
@@ -87,9 +87,9 @@ I also push this same LYWSD03MMC reading into each room's TRV(s) as their extern
 
 Beyond the TRVs, each radiator also has a temperature-differential-driven **booster fan**, custom-built and documented in a separate repo:
 
-➡️ **[BarBaar44/ESPHome/DBE](https://github.com/BarBaar44/ESPHome/tree/main/DBE)** - ESPHome firmware, full write-up of the fan control logic (hysteresis, exponential speed curve, AUTO/MANUAL modes), and a link to the custom MOSFET driver board's hardware design (schematic/PCB/Gerbers, in [BarBaar44/EasyEDA](https://github.com/BarBaar44/EasyEDA)).
+➡️ **[BarBaar44/ESPHome/DBE](https://github.com/BarBaar44/ESPHome/tree/main/DBE)** - ESPHome firmware, full write-up of the fan control logic (flow/return ΔT sensing, hysteresis, exponential speed curve, AUTO/MANUAL modes), and the full hardware design story (a **relay-switched** fan power driver - not MOSFET-based, despite the board's "DBE MosFet" naming, which is kept for historical continuity). Hardware design files (schematic/PCB/Gerbers) are in [BarBaar44/EasyEDA](https://github.com/BarBaar44/EasyEDA).
 
-In short: a radiator heats the room by warming the air that passively convects past its fins, which is relatively slow. Each DBE unit uses two Dallas temperature sensors to detect when the radiator is running meaningfully hotter than the surrounding room air, and drives a PWM-controlled fan (with a hard relay cutoff, not just PWM-off) to force air across the radiator and pull that heat into the room faster - squeezing more usable heat out of the same water temperature the boiler is already producing, rather than needing the boiler to run hotter.
+In short: a radiator heats the room by warming the air that passively convects past its fins, which is relatively slow. Each DBE unit uses two Dallas temperature sensors on the radiator's flow and return pipes to detect when there's still meaningful heat being given up by the water passing through, and drives a PWM-controlled fan (with a relay as the hard on/off power cutoff, separate from PWM speed control) to force air across the radiator and pull that heat into the room faster - squeezing more usable heat out of the same water temperature the boiler is already producing, rather than needing the boiler to run hotter.
 
 ---
 
