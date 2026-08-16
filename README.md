@@ -17,6 +17,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
   - [Thermostat](#thermostat)
   - [Thermostatic Radiator Valves (TRVs)](#thermostatic-radiator-valves-trvs)
   - [Room Temperature Sensors](#room-temperature-sensors)
+  - [Radiator Booster Fans (DBE)](#radiator-booster-fans-dbe)
 - [System Overview](#system-overview)
   - [How Multiple Rooms Heat at Once](#how-multiple-rooms-heat-at-once-the-two-tier-control-model)
   - [Rooms / Zones Covered](#rooms--zones-covered)
@@ -39,6 +40,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
 | Thermostat | DIYLess OpenTherm thermostat, reflashed with custom ESPHome | Full local control over the PID loop and OpenTherm bus, instead of relying on the stock firmware |
 | TRVs (radiators) | Sonoff TRVZB + Shelly TRV Blu (mixed) | Sonoff where it physically fits; Shelly where space is tight |
 | Room temperature sensors | Xiaomi/Aqara [LYWSD03MMC](https://www.zigbee2mqtt.io/devices/LYWSD03MMC-z.html), reflashed with custom Zigbee firmware | Cheap, tiny, battery-powered - and made fully local by replacing the stock Bluetooth/Xiaomi firmware with a Zigbee one |
+| Radiator booster fans | Custom "DBE" ESPHome + MOSFET board, per-radiator | Forces convective airflow across radiator fins to extract more heat per °C of water temperature - see [Radiator Booster Fans](#radiator-booster-fans-dbe) below |
 
 ## Boiler
 
@@ -81,6 +83,14 @@ Out of the box, this sensor only speaks Bluetooth Low Energy with Xiaomi's own (
 
 I also push this same LYWSD03MMC reading into each room's TRV(s) as their external/room temperature input, instead of letting each TRV rely on its own onboard sensor. A TRV's onboard sensor sits directly on/against the radiator body, so left to its own devices it reads noticeably warmer than the room's actual air temperature - not representative of how the room actually feels. By feeding the TRV the exact same reading that already drives its room's virtual thermostat (and the Delta Temperature sensor), every device involved in a given room - the virtual thermostat, the Delta Temperature calculation, and the TRV's own local control loop - is working off one single, consistent number, instead of each device quietly disagreeing about what "the room's temperature" actually is.
 
+## Radiator Booster Fans (DBE)
+
+Beyond the TRVs, each radiator also has a temperature-differential-driven **booster fan**, custom-built and documented in a separate repo:
+
+➡️ **[BarBaar44/ESPHome/DBE](https://github.com/BarBaar44/ESPHome/tree/main/DBE)** - ESPHome firmware, full write-up of the fan control logic (hysteresis, exponential speed curve, AUTO/MANUAL modes), and a link to the custom MOSFET driver board's hardware design (schematic/PCB/Gerbers, in [BarBaar44/EasyEDA](https://github.com/BarBaar44/EasyEDA)).
+
+In short: a radiator heats the room by warming the air that passively convects past its fins, which is relatively slow. Each DBE unit uses two Dallas temperature sensors to detect when the radiator is running meaningfully hotter than the surrounding room air, and drives a PWM-controlled fan (with a hard relay cutoff, not just PWM-off) to force air across the radiator and pull that heat into the room faster - squeezing more usable heat out of the same water temperature the boiler is already producing, rather than needing the boiler to run hotter.
+
 ---
 
 # System overview
@@ -116,6 +126,8 @@ So the actual flow is: **virtual thermostat → decides room demand (drives Tier
 **Putting it together:** say the Office has the highest demand (biggest gap between target and current temperature) and "wins" Tier 1 - its target becomes the boiler's flow temperature. Because the boiler is now producing water hot enough for the Office, every *other* room whose own target is at or below that same flow temperature can **also** heat at the same time - their TRVs simply keep their own valves open, since the water arriving at their radiator is already warm enough to reach their own target, and each TRV is independently deciding this for itself. As soon as a room reaches its own target, that room's TRV closes its valve on its own initiative, regardless of what any other room is doing. Only a room asking for a *higher* temperature than the current Tier 1 winner would be under-served until it takes over as the new winner (which happens automatically, every 10 seconds, as `sensor.delta_temperature` recalculates).
 
 This is precisely why the system doesn't need to explicitly coordinate "who gets to heat now": the boiler tier picks a flow temperature high enough for the neediest room, and every TRV independently self-regulates against its own last-given target, opening or closing its own valve without any further instruction from Home Assistant.
+
+The [radiator booster fans](#radiator-booster-fans-dbe) described above operate as an independent layer on top of this: they don't influence which room "wins" Tier 1 or when a TRV opens/closes in Tier 2 - they simply make whichever heat a radiator *is* currently receiving transfer into the room faster, regardless of which tier decided to send that heat there.
 
 ### Why each TRV target gets a +1°C overshoot buffer
 
