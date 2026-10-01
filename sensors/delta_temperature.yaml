@@ -16,6 +16,8 @@
 #   "TRV Setpoint Sync" automation (automations/trv_setpoint_sync.yaml),
 #   specifically the "Sent the Virtual Setpoint to the CV" step, which does:
 #     {{ (states('sensor.delta_temperature') | from_json).target | float(10) }}
+#   The same automation also triggers on this sensor and uses its "area"
+#   field to decide which room's TRV gets the +1C overshoot buffer.
 #
 # Output format:
 #   The sensor's state is a JSON string (not a plain number!), e.g.:
