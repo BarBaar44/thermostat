@@ -22,7 +22,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
   - [How Multiple Rooms Heat at Once](#how-multiple-rooms-heat-at-once-the-two-tier-control-model)
   - [Rooms / Zones Covered](#rooms--zones-covered)
 - [ESPHome Thermostat Firmware (`thermostat.yaml`)](#esphome-thermostat-firmware-thermostatyaml)
-  - [PID autotune mode](#pid-autotune-mode)
+  - [PID autotune (removed)](#pid-autotune-removed)
   - [Runtime-adjustable PID parameters](#runtime-adjustable-pid-parameters)
 - [Automations](#automations)
   - [TRV Setpoint Sync](#automationstrv_setpoint_syncyaml---trv-setpoint-sync)
@@ -175,26 +175,16 @@ This is the actual device config flashed to the DIYLess OpenTherm thermostat. It
 
 - **`opentherm:`** - configures the OpenTherm master on GPIO pins 21 (in) / 22 (out), with central heating enabled, DHW (domestic hot water) disabled (handled elsewhere), and CH2 active.
 - **`output: - platform: opentherm` (`t_set`)** - the boiler's target flow water temperature, written by the PID controller below (min 0, auto max, `zero_means_zero` so 0 genuinely means "boiler off" rather than "no change").
-- **`output: - platform: template` (`main_out`, `pid_out`)** - each PID climate writes into its own template output, and only the active one is forwarded to `t_set` (see [PID autotune mode](#pid-autotune-mode) below).
 - **`climate: - platform: pid` (`main_climate`, "Central heating")** - the actual PID control loop. Takes the room temperature (`ch_room_temperature`, fed from `sensor.virtual_heating_temperature` in Home Assistant) and drives `t_set` to reach the target. Tuned to `kp: 0.7`, `ki: 0.003` after ESPHome's autotune function alone wasn't sufficient (see the [Thermostat](#thermostat) section above for the story on that).
-- **`climate: - platform: pid` (`pid_climate`, "PID Climate Controller")** - a second PID loop used **only** for autotuning, reading the living room sensor directly. It only drives the boiler while the "PID Autotune Mode" switch is on.
 - **`sensor: - platform: opentherm`** - exposes all the OpenTherm boiler telemetry this specific boiler (Atag E325ec) supports: modulation level, CH water pressure, boiler/DHW/outside/return water temperatures, and the various setpoint bounds.
 - **`binary_sensor: - platform: opentherm`** - boiler fault/diagnostic flags, pump control, DHW presence, and setpoint transfer capability flags.
 - **`switch: - platform: opentherm`** - the three boiler-side toggles: CH enable, DHW enable, outside temperature compensation.
-- **`switch: - platform: template` ("PID Autotune Mode")** - hands the boiler to `pid_climate` and starts an autotune; see below.
 
-## PID autotune mode
+## PID autotune (removed)
 
-Both PID climates used to have `heat_output: t_set`. Because both re-evaluate every second (the 1-second heartbeat on their room sensors), they kept overwriting each other: `main_climate` asked for heat, while `pid_climate` - with `kp`/`ki`/`kd` all `0.0` - always wrote `0`, which with `zero_means_zero` means "central heating off". The boiler's CH-active flag flipped on/off roughly every 30 seconds (~380 times in under two hours) and the flame barely fired, so the radiators stayed cold.
+The firmware used to carry a second PID climate (`pid_climate`, "PID Climate Controller") just for ESPHome's relay autotune. While both climates wrote `heat_output: t_set`, the idle one (all gains `0.0`) kept writing `0` - "boiler off" with `zero_means_zero` - so the CH-active flag flipped on/off roughly every 30 seconds and the radiators stayed cold. That was first fixed by gating the two climates through template outputs and a "PID Autotune Mode" switch.
 
-The fix routes each PID through its own template output (`main_out` / `pid_out`) and forwards only one of them to `t_set`, selected by the `autotune_active` global:
-
-- **Normal operation** - only `main_climate` ("Central heating") drives the boiler.
-- **"PID Autotune Mode" switch on** - `pid_climate` takes over and `climate.pid.autotune` starts. Turn the switch off when the autotune result shows up in the device log to hand control back.
-- **Safety net** - ESPHome has no "autotune finished" event, so a script turns the switch off automatically after 4 hours.
-- **After a reboot** the thermostat always comes back in normal mode (`restore_value: no`).
-
-The old "PID Climate Autotune" button was removed; it would have started an autotune that wasn't connected to the boiler.
+Autotune has since been removed altogether: its relay test suits fast, simple loops rather than a slow house with TRVs, its result had to be copied in by hand, and a heating tuner in Home Assistant is taking over that job: it judges `main_climate` on real warm-ups and works through the adjustable Kp/Ki/Kd below. `main_climate` drives `t_set` directly again.
 
 ## Runtime-adjustable PID parameters
 

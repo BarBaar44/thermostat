@@ -16,36 +16,6 @@ output:
       min_value: 0
       auto_max_value: true
       zero_means_zero: true
-  # Both PID climates write here; only the active one is passed on to t_set
-  - platform: template
-    id: main_out
-    type: float
-    write_action:
-      - if:
-          condition:
-            lambda: 'return !id(autotune_active);'
-          then:
-            - output.set_level:
-                id: t_set
-                level: !lambda 'return state;'
-  - platform: template
-    id: pid_out
-    type: float
-    write_action:
-      - if:
-          condition:
-            lambda: 'return id(autotune_active);'
-          then:
-            - output.set_level:
-                id: t_set
-                level: !lambda 'return state;'
-
-globals:
-  # true while pid_climate autotunes; back to main_climate after a reboot
-  - id: autotune_active
-    type: bool
-    restore_value: no
-    initial_value: 'false'
 
 script:
   - id: apply_pid_params
@@ -55,12 +25,6 @@ script:
           kp: !lambda 'return id(main_kp).state;'
           ki: !lambda 'return id(main_ki).state;'
           kd: !lambda 'return id(main_kd).state;'
-  # Safety net: autotune has no "finished" event, so hand back after 4 hours
-  - id: autotune_timeout
-    mode: restart
-    then:
-      - delay: 4h
-      - switch.turn_off: autotune_mode
 
 # main_climate tuning, adjustable from Home Assistant without reflashing
 number:
@@ -111,13 +75,6 @@ sensor:
     name: "Temperature Sensor From Home Assistant"
     entity_id: sensor.virtual_heating_temperature
     id: ch_room_temperature
-    filters: 
-      # Push room temperature every second to update PID parameters
-      - heartbeat: 1s 
-  - platform: homeassistant
-    name: "Temperature Sensor From Home Assistant"
-    entity_id: sensor.temperature_living_room_temperature 
-    id: pid_room_temperature
     filters: 
       # Push room temperature every second to update PID parameters
       - heartbeat: 1s 
@@ -172,23 +129,6 @@ sensor:
     climate_id: main_climate
     type: DERIVATIVE
 
-  - platform: pid
-    name: "PID Climate Result"
-    climate_id: pid_climate
-    type: RESULT
-  - platform: pid
-    name: "PID Climate KP"
-    climate_id: pid_climate
-    type: KP
-  - platform: pid
-    name: "PID Climate KI"
-    climate_id: pid_climate
-    type: KI
-  - platform: pid
-    name: "PID Climate KD"
-    climate_id: pid_climate
-    type: KD
-
 binary_sensor:
   - platform: opentherm
     fault_indication:
@@ -225,41 +165,14 @@ switch:
     otc_active:
       name: "Outside temperature compensation active"
 
-  # Hands the boiler to pid_climate and starts autotune; off = back to main_climate
-  - platform: template
-    name: "PID Autotune Mode"
-    id: autotune_mode
-    lambda: 'return id(autotune_active);'
-    turn_on_action:
-      - globals.set:
-          id: autotune_active
-          value: 'true'
-      - climate.pid.autotune: pid_climate
-      - script.execute: autotune_timeout
-    turn_off_action:
-      - globals.set:
-          id: autotune_active
-          value: 'false'
-      - script.stop: autotune_timeout
-
 climate:
   - platform: pid
     id: main_climate
     name: "Central heating"
-    heat_output: main_out
+    heat_output: t_set
     default_target_temperature: 18
     sensor: ch_room_temperature
     control_parameters: 
       kp: 0.7
       ki: 0.003
 
-  - platform: pid
-    id: pid_climate
-    name: "PID Climate Controller"
-    sensor: pid_room_temperature
-    default_target_temperature: 18°C
-    heat_output: pid_out
-    control_parameters:
-      kp: 0.0
-      ki: 0.0
-      kd: 0.0
