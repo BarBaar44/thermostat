@@ -22,6 +22,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
   - [How Multiple Rooms Heat at Once](#how-multiple-rooms-heat-at-once-the-two-tier-control-model)
   - [Rooms / Zones Covered](#rooms--zones-covered)
 - [ESPHome Thermostat Firmware (`thermostat.yaml`)](#esphome-thermostat-firmware-thermostatyaml)
+  - [PID autotune mode](#pid-autotune-mode)
 - [Automations](#automations)
   - [TRV Setpoint Sync](#automationstrv_setpoint_syncyaml---trv-setpoint-sync)
   - [Heating Schedule](#automationsheating_scheduleyaml---heating-schedule)
@@ -56,7 +57,7 @@ Since I already had a separate OpenTherm Gateway in place beforehand, I already 
 
 By far the hardest part of getting this dialed in was tuning the **PID controller**. ESPHome ships with an autotune function for this, and I ran it once to get a starting point - but the resulting parameters never actually got the boiler up to the real target temperature. After a fair bit of digging to understand what each PID parameter actually does, I ended up asking ChatGPT for help, which pointed me in the right direction. (Genuinely useful AI, for once.)
 
-The final values I landed on in [`thermostat.yaml`](thermostat.yaml) are `kp: 0.7`, `ki: 0.005` (see the `climate: - platform: pid` section), driving the OpenTherm `t_set` output. Room temperature is fed in from Home Assistant (`sensor.virtual_heating_temperature`) with a 1-second heartbeat filter, so the PID controller gets frequent updates even when the underlying sensor value hasn't changed.
+The final values I landed on in [`thermostat.yaml`](thermostat.yaml) are `kp: 0.7`, `ki: 0.003` (see the `climate: - platform: pid` section), driving the OpenTherm `t_set` output. Room temperature is fed in from Home Assistant (`sensor.virtual_heating_temperature`) with a 1-second heartbeat filter, so the PID controller gets frequent updates even when the underlying sensor value hasn't changed.
 
 ## Thermostatic Radiator Valves (TRVs)
 
@@ -136,7 +137,7 @@ The fight this buffer prevents isn't between the boiler and *other* rooms' TRVs 
 1. **The boiler's own ESPHome PID loop** (`thermostat.yaml`'s `climate: - platform: pid`), which reads that winning room's current temperature and continuously adjusts the boiler's flow water temperature (`t_set`) to bring that specific room up to its target. This gradual adjustment of flow temperature is the boiler **modulating**: rather than switching abruptly between fully on and fully off, the boiler continuously varies its output to approach the target smoothly.
 2. **That same room's physical TRV**, running its own local control logic off the same room temperature reading, deciding independently when to start closing its own valve.
 
-Because these are two separate, uncoordinated controllers reacting to the same room, they can easily get out of step: the boiler's PID is deliberately gentle (`kp: 0.7`, `ki: 0.005` - see [Thermostat](#thermostat) above), so it keeps modulating - producing hot flow water for a while - as it gradually approaches the target. If the TRV in that same room starts throttling its own valve closed slightly *before* the boiler has eased off its modulation, the boiler is left pushing hot water into a system with reduced flow - the classic "fight": the boiler pumping more hot water in, the TRV independently restricting it back out. Beyond being inefficient, this can trip a low-flow or pressure fault on the boiler itself.
+Because these are two separate, uncoordinated controllers reacting to the same room, they can easily get out of step: the boiler's PID is deliberately gentle (`kp: 0.7`, `ki: 0.003` - see [Thermostat](#thermostat) above), so it keeps modulating - producing hot flow water for a while - as it gradually approaches the target. If the TRV in that same room starts throttling its own valve closed slightly *before* the boiler has eased off its modulation, the boiler is left pushing hot water into a system with reduced flow - the classic "fight": the boiler pumping more hot water in, the TRV independently restricting it back out. Beyond being inefficient, this can trip a low-flow or pressure fault on the boiler itself.
 
 Giving the *winning* room's TRV a target 1°C above what the boiler is aiming for gives that TRV enough headroom that it won't start closing until after the boiler's modulation has already had a chance to ease off naturally - removing the timing conflict between the two independent controllers.
 
@@ -172,11 +173,27 @@ Trade offs worth knowing:
 This is the actual device config flashed to the DIYLess OpenTherm thermostat. It's the physical bridge between Home Assistant and the boiler over the OpenTherm bus:
 
 - **`opentherm:`** - configures the OpenTherm master on GPIO pins 21 (in) / 22 (out), with central heating enabled, DHW (domestic hot water) disabled (handled elsewhere), and CH2 active.
-- **`output: - platform: opentherm` (`t_set`)** - the boiler's target flow water temperature, written by the PID controller below (min 45°C, auto max, `zero_means_zero` so 0 genuinely means "boiler off" rather than "no change").
-- **`climate: - platform: pid` (`main_climate`, "Central heating")** - the actual PID control loop. Takes the room temperature (`ch_room_temperature`, fed from `sensor.virtual_heating_temperature` in Home Assistant) and drives `t_set` to reach the target. Tuned to `kp: 0.7`, `ki: 0.005` after ESPHome's autotune function alone wasn't sufficient (see the [Thermostat](#thermostat) section above for the story on that).
+- **`output: - platform: opentherm` (`t_set`)** - the boiler's target flow water temperature, written by the PID controller below (min 0, auto max, `zero_means_zero` so 0 genuinely means "boiler off" rather than "no change").
+- **`output: - platform: template` (`main_out`, `pid_out`)** - each PID climate writes into its own template output, and only the active one is forwarded to `t_set` (see [PID autotune mode](#pid-autotune-mode) below).
+- **`climate: - platform: pid` (`main_climate`, "Central heating")** - the actual PID control loop. Takes the room temperature (`ch_room_temperature`, fed from `sensor.virtual_heating_temperature` in Home Assistant) and drives `t_set` to reach the target. Tuned to `kp: 0.7`, `ki: 0.003` after ESPHome's autotune function alone wasn't sufficient (see the [Thermostat](#thermostat) section above for the story on that).
+- **`climate: - platform: pid` (`pid_climate`, "PID Climate Controller")** - a second PID loop used **only** for autotuning, reading the living room sensor directly. It only drives the boiler while the "PID Autotune Mode" switch is on.
 - **`sensor: - platform: opentherm`** - exposes all the OpenTherm boiler telemetry this specific boiler (Atag E325ec) supports: modulation level, CH water pressure, boiler/DHW/outside/return water temperatures, and the various setpoint bounds.
 - **`binary_sensor: - platform: opentherm`** - boiler fault/diagnostic flags, pump control, DHW presence, and setpoint transfer capability flags.
 - **`switch: - platform: opentherm`** - the three boiler-side toggles: CH enable, DHW enable, outside temperature compensation.
+- **`switch: - platform: template` ("PID Autotune Mode")** - hands the boiler to `pid_climate` and starts an autotune; see below.
+
+## PID autotune mode
+
+Both PID climates used to have `heat_output: t_set`. Because both re-evaluate every second (the 1-second heartbeat on their room sensors), they kept overwriting each other: `main_climate` asked for heat, while `pid_climate` - with `kp`/`ki`/`kd` all `0.0` - always wrote `0`, which with `zero_means_zero` means "central heating off". The boiler's CH-active flag flipped on/off roughly every 30 seconds (~380 times in under two hours) and the flame barely fired, so the radiators stayed cold.
+
+The fix routes each PID through its own template output (`main_out` / `pid_out`) and forwards only one of them to `t_set`, selected by the `autotune_active` global:
+
+- **Normal operation** - only `main_climate` ("Central heating") drives the boiler.
+- **"PID Autotune Mode" switch on** - `pid_climate` takes over and `climate.pid.autotune` starts. Turn the switch off when the autotune result shows up in the device log to hand control back.
+- **Safety net** - ESPHome has no "autotune finished" event, so a script turns the switch off automatically after 4 hours.
+- **After a reboot** the thermostat always comes back in normal mode (`restore_value: no`).
+
+The old "PID Climate Autotune" button was removed; it would have started an autotune that wasn't connected to the boiler.
 
 This firmware is what the rest of the repo (the automations, scripts, and Delta Temperature sensor) ultimately feeds - all of `climate.thermostat_central_heating`'s setpoint changes from `automations/trv_setpoint_sync.yaml` flow down into this device's PID loop, which then talks OpenTherm to the actual boiler. This is the Tier 1 half of the two-tier model described above - the PID loop's whole job is to get the boiler's actual flow water temperature to match whatever the "winning" room currently demands, by modulating output smoothly rather than switching abruptly on/off. This same modulating PID loop is also the other half of the boiler-vs-TRV fight described in [Why each TRV target gets a +1°C overshoot buffer](#why-each-trv-target-gets-a-1c-overshoot-buffer) above.
 
