@@ -69,15 +69,17 @@
 #     Both fixes are complementary, not alternatives to one another.
 #
 # Update frequency:
-#   Recalculated every 10 seconds via the time_pattern trigger below. This is
-#   deliberately fast so the boiler setpoint reacts quickly to any room's
-#   virtual thermostat changing, without needing to be wired into every
-#   possible trigger source itself.
+#   State-based, not trigger-based: Home Assistant re-renders it whenever one
+#   of the climate entities (or the fallback temperature sensor) it reads
+#   changes. It used to be a time_pattern trigger sensor (every 10 seconds),
+#   but a trigger template sensor sits at `unknown` until its first trigger
+#   fires, which made every consumer doing `... | from_json` (Virtual Heating
+#   Setpoint/Temperature/Area, and the TRV Setpoint Sync automation) throw a
+#   TemplateError on each restart. This template is a pure function of the
+#   climate states + one temperature sensor, always renders valid JSON, and
+#   reacts immediately - with fewer renders than the old 10-second poll.
 
-- triggers:
-    - trigger: time_pattern
-      seconds: "/10"
-  sensor:
+- sensor:
     - name: "Delta Temperature"
       unique_id: ce2b9e44-0146-4783-9f8c-3f6c0280d3f8
       state: >

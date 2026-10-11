@@ -20,6 +20,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
   - [Radiator Booster Fans (DBE)](#radiator-booster-fans-dbe)
 - [System Overview](#system-overview)
   - [How Multiple Rooms Heat at Once](#how-multiple-rooms-heat-at-once-the-two-tier-control-model)
+  - [The +1°C Overshoot Buffer (Winning Room Only)](#the-1c-overshoot-buffer-winning-room-only)
   - [Rooms / Zones Covered](#rooms--zones-covered)
 - [ESPHome Thermostat Firmware (`thermostat.yaml`)](#esphome-thermostat-firmware-thermostatyaml)
   - [PID autotune (removed)](#pid-autotune-removed)
@@ -31,6 +32,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
   - [Shared Scripts](#scriptspause_livingroom_heatingyaml-and-scriptsresume_livingroom_heatingyaml)
   - [Helper Entities Used](#helper-entities-used-across-all-three-automations)
 - [Delta Temperature Sensor](#delta-temperature-sensor-sensorsdelta_temperatureyaml)
+- [Experimental: Self-Tuning Heating and Night Cooldown Profiling](#experimental-self-tuning-heating-and-night-cooldown-profiling)
 
 ---
 
@@ -58,7 +60,9 @@ Since I already had a separate OpenTherm Gateway in place beforehand, I already 
 
 By far the hardest part of getting this dialed in was tuning the **PID controller**. ESPHome ships with an autotune function for this, and I ran it once to get a starting point - but the resulting parameters never actually got the boiler up to the real target temperature. After a fair bit of digging to understand what each PID parameter actually does, I ended up asking ChatGPT for help, which pointed me in the right direction. (Genuinely useful AI, for once.)
 
-The final values I landed on in [`thermostat.yaml`](thermostat.yaml) are `kp: 0.7`, `ki: 0.003` (see the `climate: - platform: pid` section), driving the OpenTherm `t_set` output. Room temperature is fed in from Home Assistant (`sensor.virtual_heating_temperature`) with a 1-second heartbeat filter, so the PID controller gets frequent updates even when the underlying sensor value hasn't changed.
+The values I landed on are `kp: 0.7`, `ki: 0.003` (see the `climate: - platform: pid` section of [`thermostat.yaml`](thermostat.yaml)), driving the OpenTherm `t_set` output. Room temperature is fed in from Home Assistant (`sensor.virtual_heating_temperature`) with a 1-second heartbeat filter, so the PID controller gets frequent updates even when the underlying sensor value hasn't changed.
+
+Those values are now only the starting point: they can be changed from Home Assistant without reflashing (see [Runtime-adjustable PID parameters](#runtime-adjustable-pid-parameters)), and an experimental heating tuner in Home Assistant watches every warm-up to work out whether they should change (see [Experimental: self-tuning heating](#experimental-self-tuning-heating-and-night-cooldown-profiling)).
 
 ## Thermostatic Radiator Valves (TRVs)
 
@@ -99,7 +103,7 @@ In short: a radiator heats the room by warming the air that passively convects p
 
 The whole heating system is built around one idea: each room/zone gets its own **virtual thermostat** (`climate.virtual_thermostat_*`) that acts as the single source of truth for "what temperature does this room want to be". Nothing else in the system is a source of truth for desired temperature - not the physical TRVs, not the boiler. Everything downstream (physical TRVs, the boiler setpoint) is kept in sync *with* the virtual thermostats, never the other way around.
 
-This is split into three automations, two shared scripts, and one template sensor, on top of the ESPHome thermostat firmware itself:
+This is split into three automations, two shared scripts, and one template sensor, on top of the ESPHome thermostat firmware itself - plus an experimental, observe-only pyscript app (see [the last section](#experimental-self-tuning-heating-and-night-cooldown-profiling)):
 
 | File | Type | Responsibility |
 |---|---|---|
@@ -110,6 +114,7 @@ This is split into three automations, two shared scripts, and one template senso
 | `scripts/pause_livingroom_heating.yaml` | Script | Snapshot + pause living room heating (shared by two triggers) |
 | `scripts/resume_livingroom_heating.yaml` | Script | Restore living room heating from snapshot |
 | `sensors/delta_temperature.yaml` | Template sensor | Decides the single boiler setpoint across all rooms |
+| `pyscript/apps/heating_tuner.py` (in [home-assistant-config](https://github.com/BarBaar44/home-assistant-config/tree/main/pyscript)) | Pyscript app, experimental | Records every warm-up and every night, recommends PID changes and predicts the morning - observe only |
 
 > **History note:** this used to be one large automation, `housewarming.yaml`, with all of the above logic inline. It was split up for better isolation (a bug in door detection can no longer break the daily schedule) and so each concern gets its own trace history in Home Assistant. `housewarming.yaml` and the original `deltaTemperature` file are both kept in the repo only as deprecated historical references - see the deprecation notice at the top of each file. If you're setting this up fresh, use the files in `automations/`, `scripts/`, and `sensors/` instead.
 
@@ -125,38 +130,42 @@ It's important to be precise about what Home Assistant actually controls here, b
 
 So the actual flow is: **virtual thermostat → decides room demand (drives Tier 1) and sends a target to the TRV (initiates Tier 2) → the TRV's own firmware takes it from there.** As long as the boiler is producing water hot enough to physically reach that TRV's target, the TRV will keep its valve open and let heat through. Once the room reaches its target, the TRV's own internal logic closes the valve by itself to stop the flow - Home Assistant isn't polling it every few seconds to tell it to close; the TRV decides that autonomously, the same way it would if it were paired with any other thermostat.
 
-**Putting it together:** say the Office has the highest demand (biggest gap between target and current temperature) and "wins" Tier 1 - its target becomes the boiler's flow temperature. Because the boiler is now producing water hot enough for the Office, every *other* room whose own target is at or below that same flow temperature can **also** heat at the same time - their TRVs simply keep their own valves open, since the water arriving at their radiator is already warm enough to reach their own target, and each TRV is independently deciding this for itself. As soon as a room reaches its own target, that room's TRV closes its valve on its own initiative, regardless of what any other room is doing. Only a room asking for a *higher* temperature than the current Tier 1 winner would be under-served until it takes over as the new winner (which happens automatically, every 10 seconds, as `sensor.delta_temperature` recalculates).
+**Putting it together:** say the Office has the highest demand (biggest gap between target and current temperature) and "wins" Tier 1 - its target becomes the boiler's flow temperature. Because the boiler is now producing water hot enough for the Office, every *other* room whose own target is at or below that same flow temperature can **also** heat at the same time - their TRVs simply keep their own valves open, since the water arriving at their radiator is already warm enough to reach their own target, and each TRV is independently deciding this for itself. As soon as a room reaches its own target, that room's TRV closes its valve on its own initiative, regardless of what any other room is doing. Only a room asking for a *higher* temperature than the current Tier 1 winner would be under-served until it takes over as the new winner (which happens automatically: `sensor.delta_temperature` recalculates as soon as any virtual thermostat changes).
 
 This is precisely why the system doesn't need to explicitly coordinate "who gets to heat now": the boiler tier picks a flow temperature high enough for the neediest room, and every TRV independently self-regulates against its own last-given target, opening or closing its own valve without any further instruction from Home Assistant.
 
 The [radiator booster fans](#radiator-booster-fans-dbe) described above operate as an independent layer on top of this: they don't influence which room "wins" Tier 1 or when a TRV opens/closes in Tier 2 - they simply make whichever heat a radiator *is* currently receiving transfer into the room faster, regardless of which tier decided to send that heat there.
 
-### Why each TRV target gets a +1°C overshoot buffer
+## The +1°C overshoot buffer (winning room only)
 
-The fight this buffer prevents isn't between the boiler and *other* rooms' TRVs - it's between the boiler's **own PID loop** and the TRV **in the same room that is currently driving the boiler** (the Tier 1 winner). Two independent controllers end up watching the same room at the same time:
+Only the room that is currently driving the boiler - the Tier 1 winner, i.e. the `area` reported by `sensor.delta_temperature` - gets its TRV target set **1°C above** its virtual thermostat setpoint. Every other room that heats along at the same time (a "passenger" room) gets its **exact** target. Earlier versions gave every TRV the +1°C, which let passenger rooms overshoot their own target by up to 1°C for no reason.
+
+### Why the winning room needs it
+
+The fight this buffer prevents isn't between the boiler and *other* rooms' TRVs - it's between the boiler's **own PID loop** and the TRV **in the same room that is currently driving the boiler**. Two independent controllers end up watching the same room at the same time:
 
 1. **The boiler's own ESPHome PID loop** (`thermostat.yaml`'s `climate: - platform: pid`), which reads that winning room's current temperature and continuously adjusts the boiler's flow water temperature (`t_set`) to bring that specific room up to its target. This gradual adjustment of flow temperature is the boiler **modulating**: rather than switching abruptly between fully on and fully off, the boiler continuously varies its output to approach the target smoothly.
 2. **That same room's physical TRV**, running its own local control logic off the same room temperature reading, deciding independently when to start closing its own valve.
 
-Because these are two separate, uncoordinated controllers reacting to the same room, they can easily get out of step: the boiler's PID is deliberately gentle (`kp: 0.7`, `ki: 0.003` - see [Thermostat](#thermostat) above), so it keeps modulating - producing hot flow water for a while - as it gradually approaches the target. If the TRV in that same room starts throttling its own valve closed slightly *before* the boiler has eased off its modulation, the boiler is left pushing hot water into a system with reduced flow - the classic "fight": the boiler pumping more hot water in, the TRV independently restricting it back out. Beyond being inefficient, this can trip a low-flow or pressure fault on the boiler itself.
+Because these are two separate, uncoordinated controllers reacting to the same room, they can easily get out of step: the boiler's PID is deliberately gentle (see [Runtime-adjustable PID parameters](#runtime-adjustable-pid-parameters)), so it keeps modulating - producing hot flow water for a while - as it gradually approaches the target. If the TRV in that same room starts throttling its own valve closed slightly *before* the boiler has eased off its modulation, the boiler is left pushing hot water into a system with reduced flow - the classic "fight": the boiler pumping more hot water in, the TRV independently restricting it back out. Beyond being inefficient, this can trip a low-flow or pressure fault on the boiler itself.
 
-Giving the *winning* room's TRV a target 1°C above what the boiler is aiming for gives that TRV enough headroom that it won't start closing until after the boiler's modulation has already had a chance to ease off naturally - removing the timing conflict between the two independent controllers.
+Giving the *winning* room's TRV a target 1°C above what the boiler is aiming for gives that TRV enough headroom that it won't start closing until after the boiler's modulation has already had a chance to ease off naturally - removing the timing conflict between the two independent controllers. A passenger room's TRV can't get into this fight, because the boiler isn't modulating for that room, so it doesn't need the buffer.
 
-### The buffer is dynamic: only the Tier 1 winner gets it
+### How the buffer moves between rooms
 
-The live TRV Setpoint Sync automation (in [BarBaar44/home-assistant-config](https://github.com/BarBaar44/home-assistant-config/blob/main/automations/trv_setpoint_sync.yaml), introduced in [PR #5](https://github.com/BarBaar44/home-assistant-config/pull/5)) only adds the +1°C buffer to the room that `sensor.delta_temperature` currently reports as the Tier 1 winner (its `area` field). Every other (passenger) room's TRV gets its exact virtual thermostat target, so passenger rooms no longer overshoot their own target by up to 1°C. A passenger TRV was never at risk of fighting the boiler's modulation anyway, since the boiler only modulates to satisfy the winning room.
+`automations/trv_setpoint_sync.yaml` (the same as the live version in [BarBaar44/home-assistant-config](https://github.com/BarBaar44/home-assistant-config/blob/main/automations/trv_setpoint_sync.yaml), where it was introduced in [PR #5](https://github.com/BarBaar44/home-assistant-config/pull/5)) handles this:
 
-How it works:
 - **Setpoint change** on a virtual thermostat: only that room's TRVs are resynced, with the buffer if that room is the current winner.
 - **Winner change** (`sensor.delta_temperature`'s `area` changes to a real room): every room is resynced, so the old winner drops to its exact target and the new winner gets the buffer. Rooms are matched by comparing `area_name()` of each virtual thermostat with the sensor's `area`, which is the same function the sensor uses, so no area names are hardcoded.
 - **Winner goes to `Off`** (no room has genuine demand): nothing is resynced. The last winner deliberately keeps its buffer, because that is exactly the moment the boiler is still winding down its modulation, which is the fight the buffer exists to prevent.
 - A TRV is only written to when its target actually differs, to avoid needless radio traffic and battery drain on the TRVs.
 
-Trade offs worth knowing:
-- With the `time_pattern` version of the sensor in this repo (every 10 seconds), a room that becomes the new winner through a setpoint change gets its exact target first and the buffer up to 10 seconds later. The state-based sensor in home-assistant-config updates on the climate state change itself, so there the delay is negligible.
+Trade-offs worth knowing:
+- A room that becomes the new winner through its own setpoint change first gets its exact target, then the buffer a moment later, when the sensor's new `area` triggers the winner-change resync.
 - If two rooms have nearly equal demand, the winner can alternate between them, and each switch moves both rooms' TRV targets by 1°C. If that turns out to be noisy in practice, add hysteresis to the winner selection in `sensors/delta_temperature.yaml`.
-- The automation now also triggers on every `sensor.delta_temperature` state change; the condition stops runs where the winning room did not change, but those runs still appear in the automation's trace history.
+- The automation triggers on every `sensor.delta_temperature` state change; the condition stops runs where the winning room did not change, but those runs still appear in the automation's trace history.
 - The hallway TRV is unaffected: it is still derived from the living room setpoint (minus 8°C, minimum 5°C) without any buffer.
+- The experimental heating tuner (last section) never changes this buffer.
 
 ### Rooms / zones covered
 - Living room (`climate.virtual_thermostat_living_room`) → TRVs: kitchen, living room front, living room rear (+ derives the hallway TRV setpoint)
@@ -173,13 +182,13 @@ Trade offs worth knowing:
 
 This is the actual device config flashed to the DIYLess OpenTherm thermostat. It's the physical bridge between Home Assistant and the boiler over the OpenTherm bus:
 
-- **`opentherm:`** - configures the OpenTherm master on GPIO pins 21 (in) / 22 (out), with central heating enabled, DHW (domestic hot water) disabled (handled elsewhere), and CH2 active.
+- **`opentherm:`** - configures the OpenTherm master on GPIO pins 21 (in) / 22 (out), with central heating enabled and CH2 active. The DHW-enable flag is sent as off (`dhw_enable: false`); this combi boiler still makes hot water on demand with the flag off, at the setpoint from the "Hot water setpoint" number below.
 - **`output: - platform: opentherm` (`t_set`)** - the boiler's target flow water temperature, written by the PID controller below (min 0, auto max, `zero_means_zero` so 0 genuinely means "boiler off" rather than "no change").
 - **`climate: - platform: pid` (`main_climate`, "Central heating")** - the actual PID control loop. Takes the room temperature (`ch_room_temperature`, fed from `sensor.virtual_heating_temperature` in Home Assistant) and drives `t_set` to reach the target. Tuned to `kp: 0.7`, `ki: 0.003` after ESPHome's autotune function alone wasn't sufficient (see the [Thermostat](#thermostat) section above for the story on that).
 - **`sensor: - platform: opentherm`** - exposes all the OpenTherm boiler telemetry this specific boiler (Atag E325ec) supports: modulation level, CH water pressure, boiler/DHW/outside/return water temperatures, and the various setpoint bounds.
 - **`binary_sensor: - platform: opentherm`** - boiler fault/diagnostic flags, pump control, DHW presence, and setpoint transfer capability flags.
 - **`switch: - platform: opentherm`** - the three boiler-side toggles: CH enable, DHW enable, outside temperature compensation.
-- **`number: - platform: opentherm` (`t_dhw_set`, "Hot water setpoint")** - the hot water temperature the boiler heats to, written by the thermostat (40-60 °C, default 55 °C, kept across reboots). The boiler is a combi without a storage tank, so there is no Legionella reason to keep it at the boiler's former 65 °C; lower means less heat loss in the pipes and less limescale. Overrides the setting on the boiler's own panel.
+- **`number: - platform: opentherm` (`t_dhw_set`, "Hot water setpoint")** - the hot water temperature the boiler heats to, written by the thermostat (40-60 °C, set to **50 °C**, kept across reboots - `initial_value: 55` only applies when no value is saved on the device yet). The boiler is a combi without a storage tank, so there is no Legionella reason to keep it at the boiler's former 65 °C; lower means less heat loss in the pipes and less limescale. Overrides the setting on the boiler's own panel.
 
 ## PID autotune (removed)
 
@@ -195,13 +204,13 @@ Autotune has since been removed altogether: its relay test suits fast, simple lo
 - **"Central heating PID Result / Error / Proportional / Integral / Derivative"** - `platform: pid` sensors on `main_climate`, so you can see *why* the loop does what it does (e.g. an integral that has wound up). ESPHome reports all of these ×100 (an Error of `-90` means the room is 0.9 °C above target).
 - **"Outdoor Temperature From Home Assistant"** - `sensor.outdoor_temperature`, pulled in for logging now and for a weather-compensated heating curve later.
 
-This firmware is what the rest of the repo (the automations, scripts, and Delta Temperature sensor) ultimately feeds - all of `climate.thermostat_central_heating`'s setpoint changes from `automations/trv_setpoint_sync.yaml` flow down into this device's PID loop, which then talks OpenTherm to the actual boiler. This is the Tier 1 half of the two-tier model described above - the PID loop's whole job is to get the boiler's actual flow water temperature to match whatever the "winning" room currently demands, by modulating output smoothly rather than switching abruptly on/off. This same modulating PID loop is also the other half of the boiler-vs-TRV fight described in [Why each TRV target gets a +1°C overshoot buffer](#why-each-trv-target-gets-a-1c-overshoot-buffer) above.
+This firmware is what the rest of the repo (the automations, scripts, and Delta Temperature sensor) ultimately feeds - all of `climate.thermostat_central_heating`'s setpoint changes from `automations/trv_setpoint_sync.yaml` flow down into this device's PID loop, which then talks OpenTherm to the actual boiler. This is the Tier 1 half of the two-tier model described above - the PID loop's whole job is to get the boiler's actual flow water temperature to match whatever the "winning" room currently demands, by modulating output smoothly rather than switching abruptly on/off. This same modulating PID loop is also the other half of the boiler-vs-TRV fight described in [The +1°C overshoot buffer](#the-1c-overshoot-buffer-winning-room-only) above.
 
 # Automations
 
 ## `automations/trv_setpoint_sync.yaml` - TRV Setpoint Sync
 
-Triggered whenever the `temperature` attribute of any virtual thermostat changes (**Setpoint change**), and whenever `sensor.delta_temperature` reports a different winning room (**Winner change**; updates where the winner stays the same or becomes `Off` are filtered out by the automation's condition). Rooms and their TRVs are listed once, in the `rooms` variable, and synced in a `repeat: for_each` loop. A setpoint change only syncs the room that fired; a winner change syncs every room. Each room is skipped when its `temperature` attribute `is none`, and each TRV is only written to when its current target differs from the new one. The **+1°C** overshoot buffer is only added for the room whose `area_name()` matches the sensor's current `area` - see [Why each TRV target gets a +1°C overshoot buffer](#why-each-trv-target-gets-a-1c-overshoot-buffer) for the reasoning and [The buffer is dynamic](#the-buffer-is-dynamic-only-the-tier-1-winner-gets-it) for the exact rules.
+Triggered whenever the `temperature` attribute of any virtual thermostat changes (**Setpoint change**), and whenever `sensor.delta_temperature` reports a different winning room (**Winner change**; updates where the winner stays the same or becomes `Off` are filtered out by the automation's condition). Rooms and their TRVs are listed once, in the `rooms` variable, and synced in a `repeat: for_each` loop. A setpoint change only syncs the room that fired; a winner change syncs every room. Each room is skipped when its `temperature` attribute `is none`, and each TRV is only written to when its current target differs from the new one. The **+1°C** overshoot buffer is only added for the room whose `area_name()` matches the sensor's current `area` - see [Why the winning room needs it](#why-the-winning-room-needs-it) for the reasoning and [How the buffer moves between rooms](#how-the-buffer-moves-between-rooms) for the exact rules.
 
 This is the Tier 2 half of the two-tier model described in [System overview](#how-multiple-rooms-heat-at-once-the-two-tier-control-model) above: this automation only ever sends a **target temperature** to each room's TRV(s), based purely on that room's own virtual thermostat - it never tells a TRV to open or close directly. What the TRV does with that target (opening/closing its own valve to reach and hold it) is entirely up to the TRV's own onboard logic, completely independent of whichever room is currently winning the boiler's flow-temperature race.
 
@@ -251,13 +260,16 @@ A self-healing safety net for step 1. Home Assistant's `state` trigger with `fro
 
 Extracted from what used to be duplicated scene-snapshot/turn-off/turn-on sequences inline in two separate places (the doors-open branch and the safety-net branch would otherwise have identical logic copy-pasted). Now both relevant branches in `Garden Door Heating Pause` call the same scripts, so any future change to the pause/resume behaviour only needs to happen in one place.
 
-- **`script.pause_livingroom_heating`**: snapshots the living room TRVs + virtual thermostat into `scene.heatinglivingroomscene`, turns the living room virtual thermostat off, and sets `input_boolean.garden_heating_paused` on.
-- **`script.resume_livingroom_heating`**: restores `scene.heatinglivingroomscene` and turns `input_boolean.garden_heating_paused` off.
+- **`script.pause_livingroom_heating`**: writes a small JSON snapshot - the living room virtual thermostat's `hvac_mode` and target, plus the three living room TRV targets - to `input_text.livingroom_heating_snapshot`, turns the living room virtual thermostat off, and sets `input_boolean.garden_heating_paused` on.
+- **`script.resume_livingroom_heating`**: restores the mode, target and TRV targets from that snapshot, clears the snapshot so a stale copy can't be reused, and turns `input_boolean.garden_heating_paused` off. If there is no usable snapshot (never taken, already cleared, or unreadable), it puts the living room back into `heat` at 18°C and raises a persistent notification, instead of silently leaving the room cold.
+
+These used to snapshot into a scene with `scene.create`. A created scene only lives in memory, so a Home Assistant restart while the garden doors were open lost it, and there was nothing left to restore. A plain `input_text` survives restarts.
 
 ### Helper entities used (across all three automations)
 - `input_boolean.somebody_home` - presence flag driving the daily start/stop logic
 - `input_boolean.sun_assist_pending` - tracks whether a "sunny start" is awaiting its 1-hour follow-up check
 - `input_boolean.garden_heating_paused` - tracks whether living room heating was paused due to open garden doors
+- `input_text.livingroom_heating_snapshot` - JSON snapshot of the living room heating state while it is paused (see the scripts above)
 - `input_datetime.sun_check_time` - dynamically scheduled time for the follow-up sun check
 - `binary_sensor.backdoors_garden` - open/closed sensor for the garden doors (open window detection); combines `binary_sensor.door_sensor_garden_doors_contact` and `binary_sensor.door_sensor_kitchen_door_contact`
 - `switch.main_thermostat_central_heating_enabled` - master enable/disable switch for the boiler
@@ -266,9 +278,9 @@ Extracted from what used to be duplicated scene-snapshot/turn-off/turn-on sequen
 
 # Delta Temperature sensor (`sensors/delta_temperature.yaml`)
 
-A template sensor helper (`sensor.delta_temperature`) that recalculates every 10 seconds (`time_pattern`, `seconds: "/10"`) and acts as the "brain" deciding what setpoint the central heating boiler should actually be given, across a house with multiple independently-controlled rooms that a single-setpoint boiler cannot natively understand.
+A template sensor helper (`sensor.delta_temperature`) that recalculates as soon as any virtual thermostat changes (state-based - it used to poll every 10 seconds with a `time_pattern` trigger; the file header explains why that was dropped) and acts as the "brain" deciding what setpoint the central heating boiler should actually be given, across a house with multiple independently-controlled rooms that a single-setpoint boiler cannot natively understand.
 
-This sensor is **only** responsible for Tier 1 of the [two-tier control model](#how-multiple-rooms-heat-at-once-the-two-tier-control-model) described above - picking the boiler's flow temperature. It has no influence over which rooms actually receive heat; that's entirely down to each room's own TRV self-regulating against the target it was last given, in Tier 2. Its `area` field is also what `automations/trv_setpoint_sync.yaml` checks to decide which single room's TRV currently receives the +1°C buffer (see [above](#the-buffer-is-dynamic-only-the-tier-1-winner-gets-it)).
+This sensor is **only** responsible for Tier 1 of the [two-tier control model](#how-multiple-rooms-heat-at-once-the-two-tier-control-model) described above - picking the boiler's flow temperature. It has no influence over which rooms actually receive heat; that's entirely down to each room's own TRV self-regulating against the target it was last given, in Tier 2. Its `area` field is also what `automations/trv_setpoint_sync.yaml` checks to decide which single room's TRV currently receives the +1°C buffer (see [above](#how-the-buffer-moves-between-rooms)).
 
 ### Why this is needed
 A boiler only has one setpoint. But this system has many rooms, each with their own virtual thermostat, each potentially wanting a different temperature at any given moment. Something has to reduce "many rooms, many demands" down to "one number the boiler understands" - that's this sensor's entire job.
@@ -294,3 +306,49 @@ Before Rule 0 existed, this sensor had a sharp edge: if a virtual thermostat got
 Rule 0 is a defense-in-depth fix for this class of bug: it stops any stuck/overshooting thermostat from ever misleading the boiler into thinking there's demand when there isn't. It does **not** replace fixing the root cause (a thermostat getting stuck in `heat` in the first place) - both fixes work together: Rule 0 protects the boiler from bad data, while the safety-net automation trigger works to prevent the bad data from happening at all.
 
 **If you're copying this approach:** any "pick the best candidate, with a fallback if none qualify" template pattern should be checked for this exact edge case - make sure the fallback branch can't be mistaken for the genuine, unqualified `best` result by whatever consumes it downstream.
+
+# Experimental: self-tuning heating and night cooldown profiling
+
+> **Status: experimental, observe only.** Everything in this section records data and says what it *would* do - nothing here changes the heating yet. The code lives in [BarBaar44/home-assistant-config](https://github.com/BarBaar44/home-assistant-config/tree/main/pyscript): a [pyscript](https://github.com/custom-components/pyscript) app (`pyscript/apps/heating_tuner.py`) with the logic in plain-Python modules (`pyscript/modules/heating_tuner_core.py`, `heating_night_core.py`) that have no Home Assistant dependencies.
+
+The PID values and the schedule above were tuned by hand, once. The goal is for Home Assistant to keep re-evaluating them from how the house actually behaves, in four phases:
+
+| Phase | What | Status |
+|---|---|---|
+| 1. Measure | Kp/Ki/Kd adjustable from Home Assistant; PID terms and outdoor temperature exposed by the firmware | Live |
+| 2. Observe | Record every warm-up and every night; work out what it *would* change | Live (since October 2026) |
+| 3. Heating curve | Flow temperature follows the outdoor temperature, with the PID only trimming | Planned |
+| 4. Auto-adjust | Apply its own recommendations within hard limits, with an on/off switch, a reset, and a notification for every change | Planned |
+
+## Warm-up episodes (PID tuning)
+
+Once a minute the tuner samples the boiler target, the room temperature the PID sees (`sensor.virtual_heating_temperature`), the winning room, flame, hot water, flow temperature, outdoor temperature, the PID integral, the garden-door pause and the gas meter. An **episode** starts when the room drops more than 0.1°C below target while central heating is enabled, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops).
+
+Each episode is judged on time to target (more than 60 minutes counts as slow), overshoot (more than 0.4°C above target), dip below target afterwards (more than 0.4°C), flame starts per hour (more than 6 counts as short-cycling), and gas used.
+
+- **Only living-room-led episodes tune.** Other rooms win Tier 1 rarely; their episodes are recorded (reason `other_room`) so it can be judged later whether they need parameters of their own, but they never move the shared values.
+- **Disturbed episodes are skipped:** winner or target changed, garden doors paused the heating, more than 10 minutes of hot water, or shorter than 30 minutes.
+- **A recommendation needs agreement:** the last 2 valid episodes in the same outdoor-temperature band (below 0, 0-8, 8-15, above 15°C) must point the same way. Then exactly one parameter moves by 10%: overshoot → lower Ki; swinging or short-cycling → lower Kp; slow without overshoot → raise Kp.
+- **Hard limits:** Kp 0.3-1.5, Ki 0.0005-0.01, Kd 0-2000.
+- **It never touches the +1°C TRV buffer.**
+
+## Night cooldown profiling
+
+The heating goes off at 20:00 and the house cools until the morning start. Every night is sampled every 10 minutes (living room temperature, outdoor temperature, wind, garden doors, sun) and turned into a small model:
+
+- **The quiet part of the night** (from 01:00 until sunrise or until the heating comes on, garden doors closed) follows Newton's law of cooling, `dT/dt = -k · (T_room - T_outdoor)`, with time constant τ = 1/k. The first nights gave τ between 34 and 133 hours: this house holds its heat well, losing about 0.13°C per hour with an 8°C indoor-outdoor difference.
+- **The evening doesn't follow that law.** People, cooking and appliances keep the living room warm for 2-4 hours after the heating stops, then it drops 1-2°C around bedtime. That part is learned as a plain number, the "evening drop" from 21:00 to 01:00.
+
+At 21:00 the tuner takes the hourly forecast (`weather.forecast_home`) and predicts the living room temperature at the comfort time (07:30 on weekdays, 08:00 at weekends), and - from the warm-up speed measured in morning episodes - when the heating would have to start to reach 18°C by then. The next morning that prediction is compared with what really happened. A back-test on the first 9 evenings, with the measured outdoor temperature standing in for the forecast, was off by 0.2-0.8°C; it needs more nights before it can be trusted.
+
+**Why not pre-heat during the night?** A house loses heat in proportion to how much warmer it is than outside, so with a gas boiler the cheapest night is the coldest one you accept: pre-heating only adds losses. The dynamic gas tariff doesn't change that much: the price is set per gas day and only changes at 06:00, so shifting heat within a night is worth cents. The tuner logs tomorrow's before/after-06:00 gas price and the gas used by every warm-up, so that question can be answered with data rather than assumed.
+
+Once the predictions are reliable, they can drive an optimum start (start just late enough to be warm in time), an optimum stop (stop earlier in the evening while the room still stays comfortable), and a minimum night temperature for frost nights. The schedule times stay as they are until then.
+
+## Outputs
+
+- A daily persistent notification at 21:00 ("Heating tuner *date*") with the day's warm-ups, the night, tonight's prediction and the current recommendation; `pyscript.heating_tuner_report` shows it on demand.
+- `sensor.heating_tuner_last_overshoot`, `sensor.heating_tuner_recommendation`, `sensor.heating_tuner_night_prediction`.
+- Data in `/config/heating_tuner/`: `episodes.jsonl` and `nights.jsonl` (append-only, one JSON object per line) plus `state.json` and `night_state.json`. Not committed to git.
+
+**If you're copying this approach:** pyscript runs your code in its own interpreter, which does **not** support generator expressions (`sum(1 for ...)`, `any(x for ...)`, `next((...), None)`). Use list comprehensions instead - otherwise the code only fails the first time that path actually runs, which for an analysis that runs once per warm-up can be days later.
