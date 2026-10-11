@@ -1,8 +1,8 @@
 alias: TRV Setpoint Sync
 description: >-
   Keeps the physical TRVs (and the central heating boiler) in sync with the
-  per-room virtual thermostats. Copy of the live version in
-  BarBaar44/home-assistant-config. Only the room that currently drives the boiler
+  per-room virtual thermostats. Copy of the live version in my Home
+  Assistant config. Only the room that currently drives the boiler
   (the Tier 1 winner reported by sensor.delta_temperature) gets the +1C
   overshoot buffer; every other room gets its exact target. See README.md.
 triggers:
