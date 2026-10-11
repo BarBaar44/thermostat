@@ -23,6 +23,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
   - [Rooms / Zones Covered](#rooms--zones-covered)
 - [ESPHome Thermostat Firmware (`thermostat.yaml`)](#esphome-thermostat-firmware-thermostatyaml)
   - [PID autotune mode](#pid-autotune-mode)
+  - [Runtime-adjustable PID parameters](#runtime-adjustable-pid-parameters)
 - [Automations](#automations)
   - [TRV Setpoint Sync](#automationstrv_setpoint_syncyaml---trv-setpoint-sync)
   - [Heating Schedule](#automationsheating_scheduleyaml---heating-schedule)
@@ -194,6 +195,14 @@ The fix routes each PID through its own template output (`main_out` / `pid_out`)
 - **After a reboot** the thermostat always comes back in normal mode (`restore_value: no`).
 
 The old "PID Climate Autotune" button was removed; it would have started an autotune that wasn't connected to the boiler.
+
+## Runtime-adjustable PID parameters
+
+`main_climate`'s gains can be changed from Home Assistant without reflashing - the first step towards Home Assistant tuning the heating itself:
+
+- **"Central heating Kp / Ki / Kd"** - template `number` entities (`entity_category: config`, `restore_value: true`). They are applied to `main_climate` with `climate.pid.set_control_parameters` on every change and once at boot (`on_boot`, priority -100), so a value set in Home Assistant survives a reboot. The `control_parameters` in the climate block (`kp: 0.7`, `ki: 0.003`) are only the starting values. Changing Ki causes no output jump: ESPHome stores the integral with Ki already applied, so a new Ki only affects what accumulates afterwards.
+- **"Central heating PID Result / Error / Proportional / Integral / Derivative"** - `platform: pid` sensors on `main_climate`, so you can see *why* the loop does what it does (e.g. an integral that has wound up). ESPHome reports all of these ×100 (an Error of `-90` means the room is 0.9 °C above target).
+- **"Outdoor Temperature From Home Assistant"** - `sensor.outdoor_temperature`, pulled in for logging now and for a weather-compensated heating curve later.
 
 This firmware is what the rest of the repo (the automations, scripts, and Delta Temperature sensor) ultimately feeds - all of `climate.thermostat_central_heating`'s setpoint changes from `automations/trv_setpoint_sync.yaml` flow down into this device's PID loop, which then talks OpenTherm to the actual boiler. This is the Tier 1 half of the two-tier model described above - the PID loop's whole job is to get the boiler's actual flow water temperature to match whatever the "winning" room currently demands, by modulating output smoothly rather than switching abruptly on/off. This same modulating PID loop is also the other half of the boiler-vs-TRV fight described in [Why each TRV target gets a +1°C overshoot buffer](#why-each-trv-target-gets-a-1c-overshoot-buffer) above.
 

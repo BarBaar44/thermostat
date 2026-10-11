@@ -48,6 +48,13 @@ globals:
     initial_value: 'false'
 
 script:
+  - id: apply_pid_params
+    then:
+      - climate.pid.set_control_parameters:
+          id: main_climate
+          kp: !lambda 'return id(main_kp).state;'
+          ki: !lambda 'return id(main_ki).state;'
+          kd: !lambda 'return id(main_kd).state;'
   # Safety net: autotune has no "finished" event, so hand back after 4 hours
   - id: autotune_timeout
     mode: restart
@@ -55,7 +62,51 @@ script:
       - delay: 4h
       - switch.turn_off: autotune_mode
 
+# main_climate tuning, adjustable from Home Assistant without reflashing
+number:
+  - platform: template
+    name: "Central heating Kp"
+    id: main_kp
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: 0.7
+    min_value: 0
+    max_value: 3
+    step: 0.01
+    on_value:
+      - script.execute: apply_pid_params
+  - platform: template
+    name: "Central heating Ki"
+    id: main_ki
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: 0.003
+    min_value: 0
+    max_value: 0.05
+    step: 0.0001
+    on_value:
+      - script.execute: apply_pid_params
+  - platform: template
+    name: "Central heating Kd"
+    id: main_kd
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    min_value: 0
+    max_value: 3000
+    step: 10
+    on_value:
+      - script.execute: apply_pid_params
+
 sensor:
+  # Outdoor temperature for logging now, heating curve later
+  - platform: homeassistant
+    name: "Outdoor Temperature From Home Assistant"
+    id: outdoor_temp
+    entity_id: sensor.outdoor_temperature
   - platform: homeassistant
     name: "Temperature Sensor From Home Assistant"
     entity_id: sensor.virtual_heating_temperature
@@ -98,6 +149,28 @@ sensor:
       name: "Domestic hot water temperature setpoint"
     max_t_set:
       name: "Maximum allowable CH water setpoint"
+
+  # Internal terms of main_climate
+  - platform: pid
+    name: "Central heating PID Result"
+    climate_id: main_climate
+    type: RESULT
+  - platform: pid
+    name: "Central heating PID Error"
+    climate_id: main_climate
+    type: ERROR
+  - platform: pid
+    name: "Central heating PID Proportional"
+    climate_id: main_climate
+    type: PROPORTIONAL
+  - platform: pid
+    name: "Central heating PID Integral"
+    climate_id: main_climate
+    type: INTEGRAL
+  - platform: pid
+    name: "Central heating PID Derivative"
+    climate_id: main_climate
+    type: DERIVATIVE
 
   - platform: pid
     name: "PID Climate Result"
