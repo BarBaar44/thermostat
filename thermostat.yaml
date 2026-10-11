@@ -73,7 +73,9 @@ number:
       max_value: 60
       step: 1
       restore_value: true
-      initial_value: 55
+      # Only used when nothing is saved on the device yet; the value set
+      # from Home Assistant is kept across reboots
+      initial_value: 50
 
 sensor:
   # Outdoor temperature for logging now, heating curve later
