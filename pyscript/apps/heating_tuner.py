@@ -43,6 +43,11 @@ E_CH_ENABLED = "switch.main_thermostat_central_heating_enabled"
 E_FLAME = "binary_sensor.diyless_thermostat_flame_on"
 E_DHW = "binary_sensor.main_thermostat_domestic_hot_water_active"
 E_WATER = "sensor.thermostat_water_temperature"
+E_RETURN = "sensor.diyless_thermostat_return_water_temperature"
+# Number of people home (persons in zone.home). People add heat - the evening
+# after 20:00 can even warm up when everyone is home. Not everyone is tracked,
+# so treat it as "more or fewer than usual", not an exact count.
+E_PEOPLE = "zone.home"
 E_OUTDOOR = "sensor.outdoor_temperature"
 E_INTEGRAL = "sensor.attic_main_thermostat_central_heating_pid_integral"
 E_GARDEN = "input_boolean.garden_heating_paused"
@@ -108,6 +113,8 @@ def _sample():
         "flame": _is_on(E_FLAME),
         "dhw": _is_on(E_DHW),
         "water": _float(E_WATER),
+        "ret": _float(E_RETURN),
+        "people": _float(E_PEOPLE),
         "outdoor": _float(E_OUTDOOR),
         # ESPHome reports the PID terms x100
         "integral": _float(E_INTEGRAL, 0.01),
@@ -236,6 +243,7 @@ def _night_sample():
         "wind": _attr_float(E_WEATHER, "wind_speed"),
         "garden_open": _is_on(E_GARDEN_DOOR),
         "sun_up": _sun_up(),
+        "people": _float(E_PEOPLE),
     }
 
 
