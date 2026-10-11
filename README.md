@@ -179,6 +179,7 @@ This is the actual device config flashed to the DIYLess OpenTherm thermostat. It
 - **`sensor: - platform: opentherm`** - exposes all the OpenTherm boiler telemetry this specific boiler (Atag E325ec) supports: modulation level, CH water pressure, boiler/DHW/outside/return water temperatures, and the various setpoint bounds.
 - **`binary_sensor: - platform: opentherm`** - boiler fault/diagnostic flags, pump control, DHW presence, and setpoint transfer capability flags.
 - **`switch: - platform: opentherm`** - the three boiler-side toggles: CH enable, DHW enable, outside temperature compensation.
+- **`number: - platform: opentherm` (`t_dhw_set`, "Hot water setpoint")** - the hot water temperature the boiler heats to, written by the thermostat (40-60 °C, default 55 °C, kept across reboots). The boiler is a combi without a storage tank, so there is no Legionella reason to keep it at the boiler's former 65 °C; lower means less heat loss in the pipes and less limescale. Overrides the setting on the boiler's own panel.
 
 ## PID autotune (removed)
 
