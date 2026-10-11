@@ -114,7 +114,7 @@ This is split into three automations, two shared scripts, and one template senso
 | `scripts/pause_livingroom_heating.yaml` | Script | Snapshot + pause living room heating (shared by two triggers) |
 | `scripts/resume_livingroom_heating.yaml` | Script | Restore living room heating from snapshot |
 | `sensors/delta_temperature.yaml` | Template sensor | Decides the single boiler setpoint across all rooms |
-| `pyscript/apps/heating_tuner.py` (in [home-assistant-config](https://github.com/BarBaar44/home-assistant-config/tree/main/pyscript)) | Pyscript app, experimental | Records every warm-up and every night, recommends PID changes and predicts the morning - observe only |
+| `pyscript/apps/heating_tuner.py` + `pyscript/modules/` | Pyscript app, experimental | Records every warm-up and every night, recommends PID changes and predicts the morning - observe only |
 
 > **History note:** this used to be one large automation, `housewarming.yaml`, with all of the above logic inline. It was split up for better isolation (a bug in door detection can no longer break the daily schedule) and so each concern gets its own trace history in Home Assistant. `housewarming.yaml` and the original `deltaTemperature` file are both kept in the repo only as deprecated historical references - see the deprecation notice at the top of each file. If you're setting this up fresh, use the files in `automations/`, `scripts/`, and `sensors/` instead.
 
@@ -153,7 +153,7 @@ Giving the *winning* room's TRV a target 1°C above what the boiler is aiming fo
 
 ### How the buffer moves between rooms
 
-`automations/trv_setpoint_sync.yaml` (the same as the live version in [BarBaar44/home-assistant-config](https://github.com/BarBaar44/home-assistant-config/blob/main/automations/trv_setpoint_sync.yaml), where it was introduced in [PR #5](https://github.com/BarBaar44/home-assistant-config/pull/5)) handles this:
+`automations/trv_setpoint_sync.yaml` (the same as the version running in my Home Assistant) handles this:
 
 - **Setpoint change** on a virtual thermostat: only that room's TRVs are resynced, with the buffer if that room is the current winner.
 - **Winner change** (`sensor.delta_temperature`'s `area` changes to a real room): every room is resynced, so the old winner drops to its exact target and the new winner gets the buffer. Rooms are matched by comparing `area_name()` of each virtual thermostat with the sensor's `area`, which is the same function the sensor uses, so no area names are hardcoded.
@@ -309,7 +309,7 @@ Rule 0 is a defense-in-depth fix for this class of bug: it stops any stuck/overs
 
 # Experimental: self-tuning heating and night cooldown profiling
 
-> **Status: experimental, observe only.** Everything in this section records data and says what it *would* do - nothing here changes the heating yet. The code lives in [BarBaar44/home-assistant-config](https://github.com/BarBaar44/home-assistant-config/tree/main/pyscript): a [pyscript](https://github.com/custom-components/pyscript) app (`pyscript/apps/heating_tuner.py`) with the logic in plain-Python modules (`pyscript/modules/heating_tuner_core.py`, `heating_night_core.py`) that have no Home Assistant dependencies.
+> **Status: experimental, observe only.** Everything in this section records data and says what it *would* do - nothing here changes the heating yet. The code is in [`pyscript/`](pyscript/): a [pyscript](https://github.com/custom-components/pyscript) app ([`apps/heating_tuner.py`](pyscript/apps/heating_tuner.py), the Home Assistant glue) with the logic in plain-Python modules that have no Home Assistant dependencies ([`modules/heating_tuner_core.py`](pyscript/modules/heating_tuner_core.py) for warm-ups, [`modules/heating_night_core.py`](pyscript/modules/heating_night_core.py) for nights, [`modules/heating_tuner_store.py`](pyscript/modules/heating_tuner_store.py) for file storage).
 
 The PID values and the schedule above were tuned by hand, once. The goal is for Home Assistant to keep re-evaluating them from how the house actually behaves, in four phases:
 
@@ -344,6 +344,23 @@ At 21:00 the tuner takes the hourly forecast (`weather.forecast_home`) and predi
 **Why not pre-heat during the night?** A house loses heat in proportion to how much warmer it is than outside, so with a gas boiler the cheapest night is the coldest one you accept: pre-heating only adds losses. The dynamic gas tariff doesn't change that much: the price is set per gas day and only changes at 06:00, so shifting heat within a night is worth cents. The tuner logs tomorrow's before/after-06:00 gas price and the gas used by every warm-up, so that question can be answered with data rather than assumed.
 
 Once the predictions are reliable, they can drive an optimum start (start just late enough to be warm in time), an optimum stop (stop earlier in the evening while the room still stays comfortable), and a minimum night temperature for frost nights. The schedule times stay as they are until then.
+
+## Setting it up
+
+1. Install the [pyscript](https://github.com/custom-components/pyscript) integration (HACS) and copy `pyscript/apps/` and `pyscript/modules/` from this repo into `/config/pyscript/`.
+2. In the pyscript configuration (for example `pyscript/config.yaml`, included from `configuration.yaml` with `pyscript: !include pyscript/config.yaml`):
+
+   ```yaml
+   allow_all_imports: true   # the app imports homeassistant.util.dt
+   hass_is_global: true
+   apps:
+     heating_tuner:              # needs at least one key: an empty block leaves pyscript.app_config undefined
+       data_dir: /config/heating_tuner
+       summary_time: "21:00"     # keep at 21:00: the night prediction runs then
+   ```
+
+3. The entity IDs are constants at the top of `heating_tuner.py` (thermostat, room and outdoor sensors, garden door, gas meter, Frank Energie gas prices, weather). Change them to yours; the gas-price sensors may be missing - they are only logged.
+4. Reload pyscript. No restart is needed.
 
 ## Outputs
 
