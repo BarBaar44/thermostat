@@ -25,6 +25,7 @@ comfort time.
 """
 
 import math
+import heating_tuner_core as tuner_core
 from datetime import datetime, timedelta
 
 SCHEMA = 1
@@ -66,6 +67,11 @@ def _quiet(sample, start_iso):
         return False
     # The night starts in the evening; "after QUIET_FROM_HOUR" means the
     # next calendar day, before NIGHT_MAX_END_HOUR.
+    return _quiet_hours(sample, start_iso)
+
+
+def _quiet_hours(sample, start_iso):
+    """Sample lies in the quiet hours (next day, QUIET_FROM_HOUR..NIGHT_MAX_END_HOUR)."""
     return sample["t"][:10] != start_iso[:10] and QUIET_FROM_HOUR <= _hour(sample["t"]) < NIGHT_MAX_END_HOUR
 
 
@@ -152,6 +158,9 @@ def analyse(samples, end_reason, prediction=None, gas_start=None, gas_end=None):
         "outdoor_avg": round(sum(outdoors) / len(outdoors), 1) if outdoors else None,
         "outdoor_min": min(outdoors) if outdoors else None,
         "wind_avg": _avg([s["wind"] for s in samples]),
+        # People home in the evening part (until QUIET_FROM_HOUR) drive the
+        # evening hold/drop; overnight they are asleep and matter little
+        "people_evening": _avg([s.get("people") for s in samples if not _quiet_hours(s, first["t"])]),
         "quiet_samples": n_quiet,
         "mean_delta": mean_delta,
         "k": round(k, 5) if k is not None else None,
@@ -240,11 +249,25 @@ def predicted_at(prediction, iso):
     return pts[-1][1] if t - pts[-1][0] <= 120 else None
 
 
-def warmup_rate(episodes):
+def warmup_rate(episodes, outdoor=None):
     """
     Median warm-up speed (degC per minute) from living room morning episodes
-    that reached their target. Returns (rate, n) or (None, n).
+    that reached their target. Warm-ups get slower as it gets colder, so
+    mornings in the same outdoor band as `outdoor` are used once there are
+    MIN_WARMUPS of them; until then all mornings. Returns (rate, n, band),
+    band being None when all mornings were used.
     """
+    band = tuner_core.outdoor_band(outdoor) if outdoor is not None else None
+    in_band = _warmup_rates([e for e in episodes if band and e.get("outdoor_band") == band])
+    if len(in_band) >= MIN_WARMUPS:
+        return _median(in_band), len(in_band), band
+    rates = _warmup_rates(episodes)
+    if len(rates) < MIN_WARMUPS:
+        return None, len(rates), None
+    return _median(rates), len(rates), None
+
+
+def _warmup_rates(episodes):
     rates = []
     for e in episodes:
         if e.get("area") != "Living Room" or not e.get("rise_min"):
@@ -256,10 +279,7 @@ def warmup_rate(episodes):
         deficit = e["target"] - e["start_temp"]
         if deficit > 0.2:
             rates.append(deficit / e["rise_min"])
-    rates = rates[-K_NIGHTS:]
-    if len(rates) < MIN_WARMUPS:
-        return None, len(rates)
-    return _median(rates), len(rates)
+    return rates[-K_NIGHTS:]
 
 
 def predict(room_now, now_iso, forecast, nights, episodes, comfort_at, gas_before6=None, gas_after6=None):
@@ -280,6 +300,7 @@ def predict(room_now, now_iso, forecast, nights, episodes, comfort_at, gas_befor
         "room_at_comfort": None,
         "warmup_min": None,
         "warmups_used": 0,
+        "warmup_band": None,
         "suggested_start": None,
         "outdoor_min": min([t for _, t in forecast if t is not None], default=None),
         "gas_before6": gas_before6,
@@ -298,8 +319,10 @@ def predict(room_now, now_iso, forecast, nights, episodes, comfort_at, gas_befor
         points = simulate(room_now, now_iso, forecast, k, comfort_at)
     out["points"] = points
     out["room_at_comfort"] = points[-1][1]
-    rate, n_warm = warmup_rate(episodes)
+    fc = [(_minutes(f_iso), temp) for f_iso, temp in forecast if temp is not None]
+    rate, n_warm, band = warmup_rate(episodes, _outdoor_at(fc, _minutes(comfort_at)))
     out["warmups_used"] = n_warm
+    out["warmup_band"] = band
     if rate:
         deficit = max(MORNING_TARGET - out["room_at_comfort"], 0.0)
         out["warmup_min"] = int(round(deficit / rate))
@@ -311,8 +334,9 @@ def night_line(n):
     """One human-readable line about last night for the daily notification."""
     start = n["start"][11:16]
     end = n["end"][11:16]
-    base = "- Night {}-{}: {:.1f} -> {:.1f} degC (outside avg {}), evening hold {} min, evening drop {}".format(
+    base = "- Night {}-{}: {:.1f} -> {:.1f} degC (outside avg {}, people home in the evening {}), evening hold {} min, evening drop {}".format(
         start, end, n["room_start"] or 0, n["room_end"] or 0, n["outdoor_avg"],
+        n["people_evening"] if n.get("people_evening") is not None else "-",
         n["hold_min"] if n["hold_min"] is not None else "-",
         "{:+.1f}".format(n["evening_drop"]) if n.get("evening_drop") is not None else "-")
     if n["valid"]:
@@ -334,8 +358,9 @@ def prediction_line(p):
     line = "- Tonight: room {:.1f} at {} (outside min {}, tau {} h, evening drop {:+.1f})".format(
         p["room_at_comfort"], p["comfort_at"][11:16], p["outdoor_min"], p["tau_h"], p["evening_drop"])
     if p["suggested_start"]:
-        line += "; to be {:.0f} degC by then I would start at {} ({} min warm-up)".format(
-            MORNING_TARGET, p["suggested_start"][11:16], p["warmup_min"])
+        line += "; to be {:.0f} degC by then I would start at {} ({} min warm-up, {})".format(
+            MORNING_TARGET, p["suggested_start"][11:16], p["warmup_min"],
+            "outside band " + p["warmup_band"] if p.get("warmup_band") else "all mornings")
     else:
         line += "; warm-up time still learning ({}/{} mornings)".format(p["warmups_used"], MIN_WARMUPS)
     if p["gas_before6"] is not None and p["gas_after6"] is not None:
