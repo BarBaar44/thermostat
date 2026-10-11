@@ -185,4 +185,8 @@ climate:
     control_parameters: 
       kp: 0.7
       ki: 0.003
+      # Heat-only loop: a negative integral only delays the next warm-up (it
+      # sank to -1 overnight while the room sat above target). Positive side
+      # stays at the default 1 so cold days can still build up enough heat.
+      min_integral: 0
 
