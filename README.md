@@ -25,6 +25,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
 - [ESPHome Thermostat Firmware (`thermostat.yaml`)](#esphome-thermostat-firmware-thermostatyaml)
   - [PID autotune (removed)](#pid-autotune-removed)
   - [Runtime-adjustable PID parameters](#runtime-adjustable-pid-parameters)
+  - [Boiler lockout C1 51: never write the hot water setpoint](#boiler-lockout-c1-51-never-write-the-hot-water-setpoint)
 - [Automations](#automations)
   - [TRV Setpoint Sync](#automationstrv_setpoint_syncyaml---trv-setpoint-sync)
   - [Heating Schedule](#automationsheating_scheduleyaml---heating-schedule)
@@ -188,7 +189,7 @@ This is the actual device config flashed to the DIYLess OpenTherm thermostat. It
 - **`sensor: - platform: opentherm`** - exposes all the OpenTherm boiler telemetry this specific boiler (Atag E325ec) supports: modulation level, CH water pressure, boiler/DHW/outside/return water temperatures, and the various setpoint bounds.
 - **`binary_sensor: - platform: opentherm`** - boiler fault/diagnostic flags, pump control, DHW presence, and setpoint transfer capability flags.
 - **`switch: - platform: opentherm`** - the three boiler-side toggles: CH enable, DHW enable, outside temperature compensation.
-- **No writable hot water setpoint** - the thermostat only *reads* the hot water setpoint (OpenTherm ID 56, the "Domestic hot water temperature setpoint" sensor); it is set to **50 °C** on the boiler's own panel. A writable "Hot water setpoint" number (`number: - platform: opentherm`, `t_dhw_set`) was tried, but writing ID 56 is the suspected trigger of a C1 51 (fan fault) lockout on this ATAG: the fault appeared the day after it was added, came back within seconds of every reset while the thermostat was connected (directly or through an OpenTherm Gateway), and stayed away with no thermostat connected. The boiler is a combi without a storage tank, so there is no Legionella reason to keep it at the boiler's former 65 °C; lower means less heat loss in the pipes and less limescale.
+- **No writable hot water setpoint** - the thermostat only *reads* the hot water setpoint (OpenTherm ID 56, the "Domestic hot water temperature setpoint" sensor); it is set to **50 °C** on the boiler's own panel. A writable "Hot water setpoint" number (`number: - platform: opentherm`, `t_dhw_set`) was tried, but writing ID 56 makes this ATAG lock out with **C1 51** - see [Boiler lockout C1 51](#boiler-lockout-c1-51-never-write-the-hot-water-setpoint). The boiler is a combi without a storage tank, so there is no Legionella reason to keep it at the boiler's former 65 °C; lower means less heat loss in the pipes and less limescale.
 
 ## PID autotune (removed)
 
@@ -206,6 +207,24 @@ Autotune has since been removed altogether: its relay test suits fast, simple lo
 - **`min_integral: 0`** - the loop only heats, so a negative integral is never useful: it used to sink to the default floor of -1 overnight while the room sat above target, and every morning's warm-up first had to unwind it. `max_integral` stays at the default 1 so cold days can still build up enough output. These limits can't be changed at runtime (`set_control_parameters` only covers Kp/Ki/Kd).
 
 This firmware is what the rest of the repo (the automations, scripts, and Delta Temperature sensor) ultimately feeds - all of `climate.thermostat_central_heating`'s setpoint changes from `automations/trv_setpoint_sync.yaml` flow down into this device's PID loop, which then talks OpenTherm to the actual boiler. This is the Tier 1 half of the two-tier model described above - the PID loop's whole job is to get the boiler's actual flow water temperature to match whatever the "winning" room currently demands, by modulating output smoothly rather than switching abruptly on/off. This same modulating PID loop is also the other half of the boiler-vs-TRV fight described in [The +1°C overshoot buffer](#the-1c-overshoot-buffer-winning-room-only) above.
+
+## Boiler lockout C1 51: never write the hot water setpoint
+
+> **Do not let the thermostat write the hot water (DHW) setpoint, OpenTherm ID 56.** On this Atag it locks the boiler out with **C1 51** - no heating and no hot water - until the writes stop. Reading ID 56 is fine. Set the hot water temperature on the boiler's own panel.
+
+**What it looks like:** the display shows **C1 51**, which Atag fault lists describe as a fan fault (the fan doesn't reach or hold its speed). In Home Assistant the "Fault indication" binary sensor turns on, the flame stays off on every heating or hot water demand, and a reset clears the fault for only a few seconds before it comes back. It can start while the boiler is idle.
+
+**What it is not:** despite the code, the fan was fine. With the thermostat disconnected the boiler made hot water without any fault. Water pressure and temperatures were normal, and the OpenTherm traffic itself was clean (no timeouts, parity errors or invalid frames).
+
+**The cause (October 2026):** a writable "Hot water setpoint" number was added to `thermostat.yaml`, so the thermostat wrote ID 56 to the boiler every few seconds. C1 51 appeared the next day and came back immediately after every reset - with the thermostat connected directly *and* through an OpenTherm Gateway (OTGW). The gateway's `UI=56` command did not stop the writes either. Removing the number (the thermostat then only reads ID 56) cleared it: after one reset the fault stayed off and the burner lit normally. The same lockout had happened the year before and took days to resolve; that time putting an OTGW in line made it go away.
+
+**If C1 51 comes back:**
+
+1. Check what the thermostat *writes* to the boiler before suspecting the fan. The ESPHome log shows every message (`WRITE_DATA; id: ...`); with `web_server:` enabled it can be followed at `http://<thermostat-ip>/events`.
+2. Disconnect the thermostat (or the OpenTherm wires at the boiler), reset the boiler and open a hot water tap. No fault means the boiler is fine and something the thermostat sends is the trigger; remove recently added *writes* first.
+3. Only if C1 51 also returns with nothing connected is it the fan, its wiring or the control board - a job for the installer.
+
+**After a reset the display shows C1 05 for about 7 minutes.** That is the automatic air-removal program, not a fault; the OpenTherm fault bit can stay on until it finishes, so judge the result only after C1 05 is done.
 
 # Automations
 

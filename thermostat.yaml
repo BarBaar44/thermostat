@@ -64,10 +64,10 @@ number:
     step: 10
     on_value:
       - script.execute: apply_pid_params
-  # No writable hot water setpoint: writing it (OpenTherm ID 56) is the
-  # suspected trigger of the ATAG's C1 51 lockout (2026-10-12, also through
-  # the OTGW). Set it on the boiler panel (50 degC); the t_dhw_set sensor
-  # below shows the current value.
+  # NEVER add a writable hot water setpoint: writing it (OpenTherm ID 56)
+  # locks the ATAG out with C1 51 (confirmed 2026-10-12, also through the
+  # OTGW; see README "Boiler lockout C1 51"). Set it on the boiler panel
+  # (50 degC); the t_dhw_set sensor below shows the current value.
 
 sensor:
   # Outdoor temperature for logging now, heating curve later
