@@ -10,8 +10,31 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
 - **Auto on/off based on presence** - heating starts and stops automatically depending on whether anybody is home.
 - **Nice to have: open window detection** - heating pauses automatically if a door/window is left open.
 
+## Dashboard: Heating Control Card
+
+The dashboard side of this system lives in its own repo: **[BarBaar44/Heating-Control-Card](https://github.com/BarBaar44/Heating-Control-Card)**, a Lovelace card installed through HACS (custom repository, type Dashboard).
+
+![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
+
+It is built around the entities in this repo and only ever writes to the `climate.virtual_thermostat_*` entities, so everything downstream (TRVs, the +1°C buffer, the boiler setpoint) stays the job of TRV Setpoint Sync:
+
+- **Winning room:** the header shows the room `sensor.delta_temperature` currently picks, with its current and target temperature, and highlights that room's row.
+- **Rooms:** one row per virtual thermostat with room temperature, target with − and +, Heat/Off, and its role in the two-tier model (Heating, Heating along, Pumping, Calls for heat, Reached, Off, Paused). Setpoint taps are batched into one service call, so TRV Setpoint Sync runs once per adjustment.
+- **Boiler:** heating, pumping (CH active without flame) or hot water, from the OpenTherm binary sensors and `binary_sensor.diyless_thermostat_flame_on`, with the modulation level while the burner fires.
+- **Safety:** a red banner on `binary_sensor.main_thermostat_fault_indication` (OpenTherm only sends the fault bit, so it points you to the boiler display), low and high CH pressure warnings, and "Thermostat offline" when the ESPHome thermostat is unavailable.
+- **Garden doors and schedule:** the living room row locks while `input_boolean.garden_heating_paused` is on, so a change can't be overwritten by the resume snapshot; a note shows when the schedule has `switch.main_thermostat_central_heating_enabled` off.
+
+The defaults match the entity names in this repo, so this is enough to show every room:
+
+```yaml
+type: custom:heating-control-card
+```
+
+Picking rooms, renaming them and every other option are in the card's README.
+
 ## Table of Contents
 
+- [Dashboard: Heating Control Card](#dashboard-heating-control-card)
 - [Hardware](#hardware)
   - [Boiler](#boiler)
   - [Thermostat](#thermostat)
@@ -33,7 +56,6 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
   - [Shared Scripts](#scriptspause_livingroom_heatingyaml-and-scriptsresume_livingroom_heatingyaml)
   - [Helper Entities Used](#helper-entities-used-across-all-three-automations)
 - [Delta Temperature Sensor](#delta-temperature-sensor-sensorsdelta_temperatureyaml)
-- [Dashboard: Heating Control Card](#dashboard-heating-control-card)
 - [Experimental: Self-Tuning Heating and Night Cooldown Profiling](#experimental-self-tuning-heating-and-night-cooldown-profiling)
 
 ---
@@ -43,8 +65,8 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
 | Component | Choice | Why |
 |---|---|---|
 | Boiler | Atag E325ec (2015) | Already installed; supports the OpenTherm protocol out of the box |
-| Thermostat | DIYLess OpenTherm thermostat, reflashed with custom ESPHome | Full local control over the PID loop and OpenTherm bus, instead of relying on the stock firmware |
-| TRVs (radiators) | Sonoff TRVZB + Shelly TRV Blu (mixed) | Sonoff where it physically fits; Shelly where space is tight |
+| Thermostat | [DIYLess OpenTherm thermostat](https://diyless.com/product/opentherm-thermostat), reflashed with custom ESPHome | Full local control over the PID loop and OpenTherm bus, instead of relying on the stock firmware |
+| TRVs (radiators) | [Sonoff TRVZB](https://sonoff.tech/en-nl/products/sonoff-zigbee-thermostatic-radiator-valve) + [Shelly BLU TRV](https://www.shelly.com/products/shelly-blu-trv-single-pack) (mixed) | Sonoff where it physically fits; Shelly where space is tight |
 | Room temperature sensors | Xiaomi/Aqara [LYWSD03MMC](https://www.zigbee2mqtt.io/devices/LYWSD03MMC-z.html), reflashed with custom Zigbee firmware | Cheap, tiny, battery-powered - and made fully local by replacing the stock Bluetooth/Xiaomi firmware with a Zigbee one |
 | Radiator booster fans | Custom "DBE" ESPHome + relay-switched fan driver board, per-radiator | Forces convective airflow across radiator fins to extract more heat per °C of water temperature - see [Radiator Booster Fans](#radiator-booster-fans-dbe) below |
 
@@ -54,7 +76,7 @@ A local, OpenTherm-based central heating setup built entirely on Home Assistant 
 
 ## Thermostat
 
-**DIYLess OpenTherm thermostat**, running a fully custom ESPHome config: [`thermostat.yaml`](thermostat.yaml).
+**[DIYLess OpenTherm thermostat](https://diyless.com/product/opentherm-thermostat)**, running a fully custom ESPHome config: [`thermostat.yaml`](thermostat.yaml).
 
 The DIYLess thermostat ships with its own stock firmware that technically works out of the box. I flashed ESPHome onto it anyway, because I wanted full control over the OpenTherm bus and the PID logic driving it, rather than being limited to whatever the stock firmware exposes.
 
@@ -70,7 +92,7 @@ Those values are now only the starting point: they can be changed from Home Assi
 
 I use two different TRV models across the house, purely because of space constraints - not every radiator had room for the Sonoff's bulkier housing, so a couple of rooms fell back to the smaller (but pricier) Shelly:
 
-| | Sonoff TRVZB | Shelly TRV Blu |
+| | [Sonoff TRVZB](https://sonoff.tech/en-nl/products/sonoff-zigbee-thermostatic-radiator-valve) | [Shelly BLU TRV](https://www.shelly.com/products/shelly-blu-trv-single-pack) |
 |---|---|---|
 | **Size** | A bit bulkier | Small - about the same footprint as a Tado TRV |
 | **Cost** | Cheaper | More expensive |
@@ -329,30 +351,6 @@ Before Rule 0 existed, this sensor had a sharp edge: if a virtual thermostat got
 Rule 0 is a defense-in-depth fix for this class of bug: it stops any stuck/overshooting thermostat from ever misleading the boiler into thinking there's demand when there isn't. It does **not** replace fixing the root cause (a thermostat getting stuck in `heat` in the first place) - both fixes work together: Rule 0 protects the boiler from bad data, while the safety-net automation trigger works to prevent the bad data from happening at all.
 
 **If you're copying this approach:** any "pick the best candidate, with a fallback if none qualify" template pattern should be checked for this exact edge case - make sure the fallback branch can't be mistaken for the genuine, unqualified `best` result by whatever consumes it downstream.
-
-# Dashboard: Heating Control Card
-
-The dashboard side of this system lives in its own repo: **[BarBaar44/Heating-Control-Card](https://github.com/BarBaar44/Heating-Control-Card)**, a Lovelace card installed through HACS (custom repository, type Dashboard).
-
-![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
-
-It is built around the entities in this repo and only ever writes to the `climate.virtual_thermostat_*` entities, so everything downstream (TRVs, the +1°C buffer, the boiler setpoint) stays the job of TRV Setpoint Sync:
-
-- **Winning room:** the header shows the room `sensor.delta_temperature` currently picks, with its current and target temperature, and highlights that room's row.
-- **Rooms:** one row per virtual thermostat with room temperature, target with − and +, Heat/Off, and its role in the two-tier model (Heating, Heating along, Pumping, Calls for heat, Reached, Off, Paused). Setpoint taps are batched into one service call, so TRV Setpoint Sync runs once per adjustment.
-- **Boiler:** heating, pumping (CH active without flame) or hot water, from the OpenTherm binary sensors and `binary_sensor.diyless_thermostat_flame_on`, with the modulation level while the burner fires.
-- **Safety:** a red banner on `binary_sensor.main_thermostat_fault_indication` (OpenTherm only sends the fault bit, so it points you to the boiler display), low and high CH pressure warnings, and "Thermostat offline" when the ESPHome thermostat is unavailable.
-- **Garden doors and schedule:** the living room row locks while `input_boolean.garden_heating_paused` is on, so a change can't be overwritten by the resume snapshot; a note shows when the schedule has `switch.main_thermostat_central_heating_enabled` off.
-
-The defaults match the entity names in this repo, so this is enough to show every room:
-
-```yaml
-type: custom:heating-control-card
-```
-
-Picking rooms, renaming them and every other option are in the card's README.
-
----
 
 # Experimental: self-tuning heating and night cooldown profiling
 
