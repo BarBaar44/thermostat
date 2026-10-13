@@ -329,7 +329,7 @@ Rule 0 is a defense-in-depth fix for this class of bug: it stops any stuck/overs
 
 # Experimental: self-tuning heating and night cooldown profiling
 
-> **Status: experimental, observe only.** Everything in this section records data and says what it *would* do - nothing here changes the heating yet. The code is in [`pyscript/`](pyscript/): a [pyscript](https://github.com/custom-components/pyscript) app ([`apps/heating_tuner.py`](pyscript/apps/heating_tuner.py), the Home Assistant glue) with the logic in plain-Python modules that have no Home Assistant dependencies ([`modules/heating_tuner_core.py`](pyscript/modules/heating_tuner_core.py) for warm-ups, [`modules/heating_night_core.py`](pyscript/modules/heating_night_core.py) for nights, [`modules/heating_tuner_store.py`](pyscript/modules/heating_tuner_store.py) for file storage).
+> **Status: experimental, observe only.** Everything in this section records data and says what it *would* do - nothing here changes the heating yet. The code is in [`pyscript/`](pyscript/): a [pyscript](https://github.com/custom-components/pyscript) app ([`apps/heating_tuner.py`](pyscript/apps/heating_tuner.py), the Home Assistant glue) with the logic in plain-Python modules that have no Home Assistant dependencies ([`modules/heating_tuner_core.py`](pyscript/modules/heating_tuner_core.py) for warm-ups, [`modules/heating_night_core.py`](pyscript/modules/heating_night_core.py) for nights, [`modules/heating_gas_core.py`](pyscript/modules/heating_gas_core.py) for gas per degree-day, [`modules/heating_tuner_store.py`](pyscript/modules/heating_tuner_store.py) for file storage).
 
 The PID values and the schedule above were tuned by hand, once. The goal is for Home Assistant to keep re-evaluating them from how the house actually behaves, in four phases:
 
@@ -365,7 +365,10 @@ At 21:00 the tuner takes the hourly forecast (`weather.forecast_home`) and predi
 
 Once the predictions are reliable, they can drive an optimum start (start just late enough to be warm in time), an optimum stop (stop earlier in the evening while the room still stays comfortable), and a minimum night temperature for frost nights. The schedule times stay as they are until then.
 
-## Setting it up
+## Gas per degree-day (did a change save gas?)
+
+Raw gas use per day mostly follows the weather, so it can't show whether a change helped. The tuner normalises it with **degree-days** (base 18°C: a day averaging 8°C outside counts 10) and reports **heating gas per degree-day** over the last 7 and 28 days. Hot water and cooking use gas every day, so their share - the median on summer days without heating demand, about 0.3 m³/day here - is subtracted first. It reads Home Assistant's long-term statistics of the gas meter and the outdoor temperature (up to a year back), so it has values straight away. Single days are too noisy in mild weather (one shower more or less outweighs the heating), which is why only rolling values are reported.
+
 
 1. Install the [pyscript](https://github.com/custom-components/pyscript) integration (HACS) and copy `pyscript/apps/` and `pyscript/modules/` from this repo into `/config/pyscript/`.
 2. In the pyscript configuration (for example `pyscript/config.yaml`, included from `configuration.yaml` with `pyscript: !include pyscript/config.yaml`):
@@ -385,7 +388,7 @@ Once the predictions are reliable, they can drive an optimum start (start just l
 ## Outputs
 
 - A daily persistent notification at 21:00 ("Heating tuner *date*") with the day's warm-ups, the night, tonight's prediction and the current recommendation; `pyscript.heating_tuner_report` shows it on demand.
-- `sensor.heating_tuner_last_overshoot`, `sensor.heating_tuner_recommendation`, `sensor.heating_tuner_night_prediction`.
+- `sensor.heating_tuner_last_overshoot`, `sensor.heating_tuner_recommendation`, `sensor.heating_tuner_night_prediction`, `sensor.heating_gas_per_degree_day`.
 - Data in `/config/heating_tuner/`: `episodes.jsonl` and `nights.jsonl` (append-only, one JSON object per line) plus `state.json` and `night_state.json`. Not committed to git.
 
 **If you're copying this approach:** pyscript runs your code in its own interpreter, which does **not** support generator expressions (`sum(1 for ...)`, `any(x for ...)`, `next((...), None)`). Use list comprehensions instead - otherwise the code only fails the first time that path actually runs, which for an analysis that runs once per warm-up can be days later.

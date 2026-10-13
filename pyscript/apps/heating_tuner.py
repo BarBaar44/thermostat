@@ -5,14 +5,18 @@ Samples the boiler PID loop once a minute, cuts the samples into warm-up
 episodes, stores each episode in episodes.jsonl and works out what it WOULD
 change. It never writes the Kp/Ki/Kd numbers in this phase.
 
+It also reports heating gas per degree-day (from Home Assistant's long-term
+statistics of the gas meter and the outdoor temperature) as the yardstick for
+whether a change saved gas.
+
 It also records each night's cooldown (heating off in the evening until it
 comes on in the morning) in nights.jsonl, and at the summary time predicts
 the coming night from the weather forecast: how cold the living room will
 be at the comfort time and when the heating WOULD have to start. Nothing is
 controlled; the next morning the prediction is compared with reality.
 
-All analysis lives in modules/heating_tuner_core.py and
-modules/heating_night_core.py (plain Python), file I/O in
+All analysis lives in modules/heating_tuner_core.py,
+modules/heating_night_core.py and modules/heating_gas_core.py (plain Python), file I/O in
 modules/heating_tuner_store.py. This file is only the HA glue.
 
 Config (pyscript/config.yaml -> apps: heating_tuner:), all optional:
@@ -26,6 +30,7 @@ from datetime import timedelta
 import homeassistant.util.dt as dt_util
 import heating_tuner_core as core
 import heating_night_core as night_core
+import heating_gas_core as gas_core
 import heating_tuner_store as store
 
 CFG = pyscript.app_config or {}
@@ -367,6 +372,61 @@ def _predict():
     return prediction
 
 
+# ---------------------------------------------------------------- gas per degree-day
+
+
+def _stat_date(start):
+    """Local ISO date of a daily statistics row (rows start at local midnight)."""
+    if not isinstance(start, str):
+        start = start.isoformat()
+    return dt_util.as_local(dt_util.parse_datetime(start)).date().isoformat()
+
+
+def _gas_summary():
+    """Heating gas per degree-day from up to a year of daily statistics."""
+    now = dt_util.now()
+    try:
+        response = recorder.get_statistics(
+            statistic_ids=[E_GAS, E_OUTDOOR],
+            start_time=(now - timedelta(days=365)).isoformat(),
+            period="day",
+            types=["change", "mean"],
+            units={},
+            return_response=True,
+        )
+        stats = response["statistics"]
+    except Exception as err:
+        log.warning(f"heating_tuner: no statistics for gas per degree-day: {err}")
+        return None
+    gas = {_stat_date(r["start"]): r.get("change") for r in stats.get(E_GAS, [])}
+    outdoor = {_stat_date(r["start"]): r.get("mean") for r in stats.get(E_OUTDOOR, [])}
+    s = gas_core.summary(gas_core.build_days(gas, outdoor, now.date().isoformat()))
+    w7, w28 = s["w7"] or {}, s["w28"] or {}
+    state.set(
+        "sensor.heating_gas_per_degree_day",
+        w7.get("per_dd") if w7.get("per_dd") is not None else "unknown",
+        {
+            "friendly_name": "Heating gas per degree-day (7 days)",
+            "unit_of_measurement": "m³/°Cd",
+            "icon": "mdi:fire",
+            "per_dd_28": w28.get("per_dd"),
+            "degree_days_7": w7.get("dd"),
+            "degree_days_28": w28.get("dd"),
+            "gas_7": w7.get("gas"),
+            "heating_gas_7": w7.get("heating_gas"),
+            "base_per_day": s["base"],
+            "base_days": s["base_days"],
+            "last_day": s["last"],
+        },
+    )
+    return s
+
+
+@time_trigger("startup")
+def heating_gas_startup():
+    _gas_summary()
+
+
 # ---------------------------------------------------------------- report
 
 
@@ -389,11 +449,13 @@ def heating_tuner_report(trigger_type=None):
     night_lines = [night_core.night_line(n) for n in last_nights] or ["- no night recorded"]
     if prediction:
         night_lines.append(night_core.prediction_line(prediction))
+    gas = _gas_summary()
     message = (
         "\n".join(lines)
         + f"\n\nCurrent: Kp {p['kp']}, Ki {p['ki']}, Kd {p['kd']}"
         + f"\nWould change (observe mode, nothing applied): {_rec_text(rec)}"
         + "\n\nNight (observe mode):\n" + "\n".join(night_lines)
+        + ("\n\n" + gas_core.summary_line(gas) if gas else "")
     )
     persistent_notification.create(
         notification_id="heating_tuner_daily",
