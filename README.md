@@ -216,7 +216,9 @@ This firmware is what the rest of the repo (the automations, scripts, and Delta 
 
 **What it is not:** despite the code, the fan was fine. With the thermostat disconnected the boiler made hot water without any fault. Water pressure and temperatures were normal, and the OpenTherm traffic itself was clean (no timeouts, parity errors or invalid frames).
 
-**The cause (October 2026):** a writable "Hot water setpoint" number was added to `thermostat.yaml`, so the thermostat wrote ID 56 to the boiler every few seconds. C1 51 appeared the next day and came back immediately after every reset - with the thermostat connected directly *and* through an OpenTherm Gateway (OTGW). The gateway's `UI=56` command did not stop the writes either. Removing the number (the thermostat then only reads ID 56) cleared it: after one reset the fault stayed off and the burner lit normally. The same lockout had happened the year before and took days to resolve; that time putting an OTGW in line made it go away.
+**The cause (October 2026):** a writable "Hot water setpoint" number was added to `thermostat.yaml`, so the thermostat wrote ID 56 to the boiler every few seconds. C1 51 appeared the next day and came back immediately after every reset - with the thermostat connected directly *and* through an OpenTherm Gateway (OTGW). The gateway's `UI=56` command did not stop the writes either. Removing the number (the thermostat then only reads ID 56) cleared it: after one reset the fault stayed off and the burner lit normally. The same lockout had happened the year before and took days to resolve; that time putting an OTGW in line made it go away. Once the writes had stopped, the OTGW was removed again (13 October 2026): connected directly, the boiler ran its air-removal program and then lit normally on hot water, with no fault. The gateway is not needed - stopping the ID 56 writes was the fix.
+
+**C1 05 is not a fault:** after a power cycle the display shows **C1 05** (or C0 05) for about 7 minutes. That is the automatic air-removal program, even though the "Fault indication" sensor stays on while it runs.
 
 **If C1 51 comes back:**
 
