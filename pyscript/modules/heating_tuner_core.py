@@ -81,7 +81,9 @@ def analyse(samples, params, start_reason, extra_reasons=()):
         reasons.append("too_short")
     if first["area"] not in TUNED_AREAS:
         reasons.append("other_room")
-    if any([s["area"] != first["area"] for s in samples]):
+    # "Off" is not another room: Delta Temperature reports it as soon as the
+    # leading room reaches its target, which every successful warm-up does
+    if any([s["area"] not in (first["area"], "Off") for s in samples]):
         reasons.append("winner_changed")
     if any([s["target"] != target for s in samples]):
         reasons.append("target_changed")
