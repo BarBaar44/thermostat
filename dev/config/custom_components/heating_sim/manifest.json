@@ -1,0 +1,10 @@
+{
+  "domain": "heating_sim",
+  "name": "Heating Simulator (test only)",
+  "codeowners": ["@BarBaar44"],
+  "dependencies": [],
+  "documentation": "https://github.com/BarBaar44/thermostat/tree/main/dev",
+  "iot_class": "calculated",
+  "requirements": [],
+  "version": "0.1.0"
+}

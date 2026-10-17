@@ -1,0 +1,6 @@
+# Runtime files of the test Home Assistant
+config/*
+!config/configuration.yaml
+!config/custom_components/
+config/custom_components/*
+!config/custom_components/heating_sim/

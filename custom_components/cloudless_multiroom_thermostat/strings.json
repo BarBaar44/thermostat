@@ -1,0 +1,208 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Heating system",
+        "description": "One heating system has one heat source. Rooms are added afterwards from the integration page.",
+        "data": {
+          "name": "Name",
+          "heat_source_type": "Heat source type"
+        }
+      },
+      "heat_source": {
+        "title": "Heat source",
+        "data": {
+          "heat_source_entity": "Heat source",
+          "ch_switch": "Central heating enable switch",
+          "hysteresis": "Hysteresis"
+        },
+        "data_description": {
+          "heat_source_entity": "Switch: the boiler relay. Climate: the ESPHome / DIYLess thermostat climate entity. OTGW: the OpenTherm Gateway climate entity. It receives the winning room target.",
+          "ch_switch": "Optional. Turned on while any room is set to heat, off when no room is.",
+          "hysteresis": "Switch only: start when a room is this far below its target, stop when it reaches it."
+        }
+      },
+      "settings": {
+        "title": "Settings",
+        "data": {
+          "off_temperature": "Off temperature",
+          "presence_entity": "Presence",
+          "away_mode": "When everybody is away",
+          "skip_unchanged_writes": "Skip unchanged TRV writes",
+          "external_temp_heartbeat": "Heartbeat"
+        },
+        "data_description": {
+          "off_temperature": "Sent to the heat source and TRVs when nothing should heat (frost protection).",
+          "presence_entity": "Optional. home / on means somebody is home. Unknown counts as home.",
+          "away_mode": "Rooms that are set to heat go off, or are lowered to their eco temperature.",
+          "skip_unchanged_writes": "Saves TRV batteries. When off, the heartbeat also resends every TRV target.",
+          "external_temp_heartbeat": "How often room temperatures are resent to TRV external inputs, even when unchanged (Sonoff TRVZB falls back to its own sensor after 2 hours)."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Heating system settings",
+        "data": {
+          "heat_source_entity": "Heat source",
+          "ch_switch": "Central heating enable switch",
+          "hysteresis": "Hysteresis",
+          "off_temperature": "Off temperature",
+          "presence_entity": "Presence",
+          "away_mode": "When everybody is away",
+          "skip_unchanged_writes": "Skip unchanged TRV writes",
+          "external_temp_heartbeat": "Heartbeat"
+        },
+        "data_description": {
+          "heat_source_entity": "Switch: the boiler relay. Climate: the ESPHome / DIYLess thermostat climate entity. OTGW: the OpenTherm Gateway climate entity. It receives the winning room target.",
+          "ch_switch": "Optional. Turned on while any room is set to heat, off when no room is.",
+          "hysteresis": "Switch only: start when a room is this far below its target, stop when it reaches it.",
+          "off_temperature": "Sent to the heat source and TRVs when nothing should heat (frost protection).",
+          "presence_entity": "Optional. home / on means somebody is home. Unknown counts as home.",
+          "away_mode": "Rooms that are set to heat go off, or are lowered to their eco temperature.",
+          "skip_unchanged_writes": "Saves TRV batteries. When off, the heartbeat also resends every TRV target.",
+          "external_temp_heartbeat": "How often room temperatures are resent to TRV external inputs, even when unchanged (Sonoff TRVZB falls back to its own sensor after 2 hours)."
+        }
+      }
+    }
+  },
+  "config_subentries": {
+    "room": {
+      "initiate_flow": {
+        "user": "Add room"
+      },
+      "entry_type": "Room",
+      "step": {
+        "user": {
+          "title": "Room",
+          "data": {
+            "name": "Room name",
+            "area": "Area",
+            "temperature_sensor": "Room temperature sensor",
+            "trvs": "Radiator valves (TRVs)",
+            "external_temperature_inputs": "TRV external temperature inputs",
+            "window_sensors": "Window and door sensors",
+            "window_open_delay": "Window open delay",
+            "window_close_delay": "Window close delay",
+            "eco_temperature": "Eco temperature",
+            "warm_temperature": "Warm temperature",
+            "overshoot_buffer": "Overshoot buffer",
+            "min_temp": "Minimum target",
+            "max_temp": "Maximum target",
+            "target_temp_step": "Target step"
+          },
+          "data_description": {
+            "trvs": "Optional. A room without TRVs only adds heat demand.",
+            "external_temperature_inputs": "Optional. Number entities that receive the room temperature (for example Sonoff TRVZB or Shelly BLU TRV).",
+            "window_sensors": "Optional. Heating in this room pauses while any of them is open.",
+            "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source."
+          }
+        },
+        "reconfigure": {
+          "title": "Room",
+          "data": {
+            "name": "Room name",
+            "area": "Area",
+            "temperature_sensor": "Room temperature sensor",
+            "trvs": "Radiator valves (TRVs)",
+            "external_temperature_inputs": "TRV external temperature inputs",
+            "window_sensors": "Window and door sensors",
+            "window_open_delay": "Window open delay",
+            "window_close_delay": "Window close delay",
+            "eco_temperature": "Eco temperature",
+            "warm_temperature": "Warm temperature",
+            "overshoot_buffer": "Overshoot buffer",
+            "min_temp": "Minimum target",
+            "max_temp": "Maximum target",
+            "target_temp_step": "Target step"
+          },
+          "data_description": {
+            "trvs": "Optional. A room without TRVs only adds heat demand.",
+            "external_temperature_inputs": "Optional. Number entities that receive the room temperature (for example Sonoff TRVZB or Shelly BLU TRV).",
+            "window_sensors": "Optional. Heating in this room pauses while any of them is open.",
+            "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source."
+          }
+        }
+      },
+      "error": {
+        "max_below_min": "Maximum must be higher than minimum.",
+        "preset_out_of_range": "Must be between minimum and maximum.",
+        "name_exists": "A room with this name already exists."
+      },
+      "abort": {
+        "reconfigure_successful": "Room updated."
+      }
+    }
+  },
+  "selector": {
+    "heat_source_type": {
+      "options": {
+        "switch": "On/off switch (relay boiler)",
+        "climate": "Climate entity (ESPHome, DIYLess, other thermostat)",
+        "otgw": "OpenTherm Gateway (OTGW)"
+      }
+    },
+    "away_mode": {
+      "options": {
+        "off": "Turn rooms off",
+        "eco": "Lower rooms to eco"
+      }
+    }
+  },
+  "entity": {
+    "climate": {
+      "room": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "none": "Manual",
+              "eco": "Eco",
+              "warm": "Warm"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "winner": {
+        "name": "Winning room"
+      },
+      "process_temperature": {
+        "name": "Winning room temperature"
+      },
+      "legacy_delta": {
+        "name": "Delta temperature (legacy)"
+      }
+    },
+    "binary_sensor": {
+      "window": {
+        "name": "Window"
+      },
+      "paused": {
+        "name": "Paused"
+      }
+    }
+  },
+  "services": {
+    "pause_room": {
+      "name": "Pause room",
+      "description": "Hold a room off until resumed, keeping its mode and target."
+    },
+    "resume_room": {
+      "name": "Resume room",
+      "description": "End a manual pause."
+    },
+    "set_all_off": {
+      "name": "Set all rooms off",
+      "description": "Set every room to off.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Heating system",
+          "description": "Optional. Only rooms of this heating system."
+        }
+      }
+    }
+  }
+}

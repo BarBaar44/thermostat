@@ -1,0 +1,16 @@
+pause_room:
+  target:
+    entity:
+      integration: cloudless_multiroom_thermostat
+      domain: climate
+resume_room:
+  target:
+    entity:
+      integration: cloudless_multiroom_thermostat
+      domain: climate
+set_all_off:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: cloudless_multiroom_thermostat
