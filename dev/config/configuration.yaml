@@ -1,0 +1,56 @@
+# Test Home Assistant for Cloudless Multiroom Thermostat.
+# Everything here is fake: heating_sim simulates the rooms, TRVs and boiler.
+
+default_config:
+
+logger:
+  default: warning
+  logs:
+    custom_components.cloudless_multiroom_thermostat: debug
+    custom_components.heating_sim: info
+
+homeassistant:
+  name: Heating test
+  unit_system: metric
+  time_zone: Europe/Amsterdam
+
+# Toggle these from the UI to test window pause and presence
+input_boolean:
+  sim_living_room_garden_door:
+    name: Sim Living Room garden door
+    icon: mdi:door
+  sim_master_bedroom_window:
+    name: Sim Master Bedroom window
+    icon: mdi:window-closed-variant
+  sim_somebody_home:
+    name: Sim somebody home
+    icon: mdi:home-account
+    initial: true
+
+heating_sim:
+  outdoor_temperature: 8
+  speed: 30          # 30 sim seconds per real second: one hour in two minutes
+  tick_seconds: 5
+  boiler_on_above: 12
+  rooms:
+    - name: Living Room
+      start_temperature: 17.5
+      trvs: 3
+      heat_rate: 1.5
+      window: input_boolean.sim_living_room_garden_door
+    - name: Office
+      start_temperature: 16
+      trvs: 1
+    - name: Sports Room
+      start_temperature: 15
+      trvs: 1
+      heat_rate: 2.5
+    - name: Master Bedroom
+      start_temperature: 16.5
+      trvs: 2
+      window: input_boolean.sim_master_bedroom_window
+    - name: Attic
+      # No TRVs: only adds heat demand, heats whenever the boiler fires
+      start_temperature: 14
+      trvs: 0
+      heat_rate: 0.8
