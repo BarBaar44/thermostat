@@ -18,8 +18,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install ruff
+      - run: pip install ruff shellcheck-py
       - run: ruff check custom_components tests dev
+      - run: shellcheck dev/vm/*.sh
 
   pytest:
     name: Pytest

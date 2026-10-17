@@ -21,6 +21,10 @@ Room temperatures follow a simple model: a room warms up while the boiler fires 
 
 ## Start
 
+Two options: Docker on any machine, or a VM in Virtual Machine Manager (libvirt/KVM).
+
+### Option 1: Docker
+
 Requires Docker.
 
 ```bash
@@ -32,7 +36,29 @@ Open http://localhost:8124 (port 8124 so it never clashes with a real HA on 8123
 
 The integration is mounted read only from `../custom_components/`, so after changing its code: `docker compose restart`.
 
+### Option 2: VM in Virtual Machine Manager (Fedora)
+
+`vm/create-vm.sh` builds a Debian 13 VM on your machine and lets cloud-init do the rest: it installs Docker, clones this repo, starts the same test HA and, unless you pass `--no-setup`, does onboarding and creates the heating system with all rooms. The VM shows up in Virtual Machine Manager like any other.
+
+```bash
+sudo dnf install virt-install qemu-img   # once, if not installed yet
+cd dev/vm
+./create-vm.sh                           # VM "cmt-test", runs the branch you have checked out
+```
+
+It asks for sudo (disks live in `/var/lib/libvirt/images`), downloads the Debian cloud image once (~400 MB), and prints the VM's address. First boot takes about 5 to 10 minutes, then:
+
+- Home Assistant: `http://<vm-ip>:8124`, login `test` / `testtest`
+- SSH: `ssh test@<vm-ip>` (your `~/.ssh/id_ed25519.pub` or `id_rsa.pub` is added, password works too)
+- Follow the first boot: `ssh test@<vm-ip> sudo tail -f /var/log/cloud-init-output.log`
+- Pull new code from the branch and restart HA: `ssh test@<vm-ip> sudo cmt-update`
+- Remove: `./create-vm.sh --delete`
+
+Options: `--name`, `--branch`, `--memory`, `--vcpus`, `--disk`, `--username`, `--password`, `--ssh-key`, `--no-setup`. Another storage pool: `CMT_IMAGES=/path ./create-vm.sh`. The VM runs the `stable` Home Assistant image, so it tests against the current HA release.
+
 ## Add the heating system
+
+On the VM this is already done for you (unless `--no-setup`).
 
 Either through the UI (Settings > Devices & services > Add integration > Cloudless Multiroom Thermostat, then "Add room" per room), or with the script, which runs the same forms through the API:
 
@@ -43,6 +69,8 @@ Either through the UI (Settings > Devices & services > Add integration > Cloudle
 python3 setup_heating.py --token <token>                 # boiler thermostat (climate)
 python3 setup_heating.py --token <token> --source switch # on/off relay instead
 ```
+
+On a fresh HA it can do onboarding as well: `python3 setup_heating.py --onboard --username test --password testtest`.
 
 It creates "Sim heating" with all five rooms, presence `input_boolean.sim_somebody_home`, away mode off. Only one entry at a time: delete it first to switch heat source type.
 
