@@ -451,7 +451,8 @@ class HeatingController:
             return
         for entity_id in room.config.get(CONF_EXT_TEMP) or []:
             state = self.hass.states.get(entity_id)
-            if state is None or state.state in _BAD_STATES:
+            # "unknown" is a fresh input without a value yet: it needs its first write
+            if state is None or state.state == STATE_UNAVAILABLE:
                 continue
             attrs = state.attributes
             value = round_to_step(room.current, _float(attrs.get("step")))
@@ -494,7 +495,7 @@ class HeatingController:
         self, entity_id: str, target: float, is_winner: bool, buffer: float, force: bool
     ) -> None:
         state = self.hass.states.get(entity_id)
-        if state is None or state.state in _BAD_STATES:
+        if state is None or state.state == STATE_UNAVAILABLE:
             return
         attrs = state.attributes
         desired = trv_target(

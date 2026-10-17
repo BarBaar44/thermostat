@@ -348,3 +348,28 @@ async def test_state_restored_after_reload(hass: HomeAssistant, setup) -> None:
     await hass.async_block_till_done()
     state = hass.states.get("climate.living")
     assert state.state == "heat" and state.attributes["temperature"] == 21
+
+
+async def test_fresh_external_input_without_value_gets_written(hass: HomeAssistant) -> None:
+    """A new TRV input reports unknown until its first write; it must still get one."""
+    _states(hass)
+    hass.states.async_set("number.trv_living_ext", "unknown", {"min": -10, "max": 50, "step": 0.1})
+    calls = Calls()
+
+    async def _fake_call(self, domain, service, data):
+        calls.items.append((domain, service, dict(data)))
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Heating",
+        data=SYSTEM,
+        subentries_data=[ConfigSubentryData(data=LIVING, subentry_type="room", title="Living", unique_id=None)],
+    )
+    entry.add_to_hass(hass)
+    with patch(
+        "custom_components.cloudless_multiroom_thermostat.controller.HeatingController._call",
+        _fake_call,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await _tick(hass)
+        assert calls.last("number.trv_living_ext") == ("set_value", {"entity_id": "number.trv_living_ext", "value": 18.0})
