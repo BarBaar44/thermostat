@@ -1,5 +1,10 @@
 # 🌡️ Thermostat - A Cloud-Free, Multi-Room Home Assistant Heating System
 
+> [!IMPORTANT]
+> **This setup is moving to a Home Assistant custom integration (HACS): Cloudless Multiroom Thermostat.**
+> The automations, scripts and template sensor in this repo will be replaced by it. More details will follow here once it is ready.
+
+
 A local, OpenTherm-based central heating setup built entirely on Home Assistant and ESPHome. One "virtual thermostat" per room drives both the physical TRVs and the boiler itself, with automations handling daily scheduling, passive-solar assist, and open-window detection.
 
 ## Goals
