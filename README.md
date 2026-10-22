@@ -8,14 +8,24 @@ A Home Assistant integration for multi-room central heating without a cloud. Any
 - **Presence aware:** rooms go off or to eco when everybody is away, and come back when someone is home.
 - **Open window detection** per room.
 
+## Dashboard: Heating Control Card
+
+**[Heating Control Card](https://github.com/BarBaar44/Heating-Control-Card)** is the dashboard for this system: a Lovelace card, installed through HACS (custom repository, type Dashboard). It shows every room with its temperature, target, Heat/Off and role, highlights the room the boiler heats for, and shows the boiler state: heating, pumping or hot water, modulation, faults and pressure warnings.
+
+![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
+
+<img src="https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/multi-room-card.png" alt="Heating Control Card with several rooms" width="412">
+
+The card's README lists its options, including how to pick the rooms and the boiler entities.
+
 ## Contents
 
+- [Dashboard: Heating Control Card](#dashboard-heating-control-card)
 - [Install](#install)
 - [Set up](#set-up)
 - [What it creates](#what-it-creates)
 - [How it works](#how-it-works)
 - [Experimental features](#experimental-features)
-- [Dashboard: Heating Control Card](#dashboard-heating-control-card)
 - [Example setup](#example-setup)
 - [ESPHome OpenTherm thermostat (`thermostat.yaml`)](#esphome-opentherm-thermostat-thermostatyaml)
 - [Development and test environment](#development-and-test-environment)
@@ -74,16 +84,6 @@ A boiler has only **one** flow temperature, while every room wants its own. Two 
 ## Experimental features
 
 Optional, observe-only diagnostics: warm-up episodes with PID advice, a night cooldown model that predicts the morning, gas per degree-day with the hot water split off, and an evening report. Switch them on under **Configure > Enable experimental features**. What each one does, what it needs and how mature it is: **[docs/experimental.md](docs/experimental.md)**.
-
-## Dashboard: Heating Control Card
-
-**[BarBaar44/Heating-Control-Card](https://github.com/BarBaar44/Heating-Control-Card)** is a Lovelace card for this system, installed through HACS (custom repository, type Dashboard). It shows every room with its temperature, target, Heat/Off and role, highlights the room the boiler heats for, and shows the boiler state: heating, pumping or hot water, modulation, faults and pressure warnings.
-
-![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
-
-<img src="https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/multi-room-card.png" alt="Heating Control Card with several rooms" width="412">
-
-The card's README lists its options, including how to pick the rooms and the boiler entities.
 
 ## Example setup
 
