@@ -15,7 +15,14 @@ Nothing here controls real hardware. The `heating_sim` integration fakes everyth
 | Outdoor temperature | `sensor.sim_outdoor_temperature` |
 | Windows and presence (toggle these yourself) | `input_boolean.sim_living_room_garden_door`, `input_boolean.sim_master_bedroom_window`, `input_boolean.sim_somebody_home` |
 
-Rooms: Living Room (3 TRVs, garden door), Office, Sports Room, Master Bedroom (2 TRVs, window) and Attic (no TRVs, only adds demand).
+Rooms: Living Room (3 TRVs, garden door), Office, Sports Room, Master Bedroom (2 TRVs, window) and Attic (no TRVs, only adds demand). These five are added to the heating system by `setup_heating.py`.
+
+Two spare rooms are simulated but not added, so you can try "Add room" in the UI with real entities to pick:
+
+| Spare room | Temperature sensor | TRVs | External inputs | Window |
+|---|---|---|---|---|
+| Guest Room | `sensor.sim_guest_room_temperature` | `climate.sim_guest_room_trv_1`, `_trv_2` | `number.sim_guest_room_trv_1_external_temperature`, `_trv_2_` | `input_boolean.sim_guest_room_window` |
+| Bathroom | `sensor.sim_bathroom_temperature` | `climate.sim_bathroom_trv_1` | `number.sim_bathroom_trv_1_external_temperature` | none |
 
 Room temperatures follow a simple model: a room warms up while the boiler fires and its TRVs are open, and cools towards the outdoor temperature, faster with a window open. A TRV opens when its target is above what it measures: the external input when it got one in the last 2 hours, otherwise its own sensor, which reads 1.5 °C warm like a real TRV on a radiator. At `speed: 30` one hour passes in two minutes.
 

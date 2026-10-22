@@ -22,6 +22,9 @@ input_boolean:
   sim_master_bedroom_window:
     name: Sim Master Bedroom window
     icon: mdi:window-closed-variant
+  sim_guest_room_window:
+    name: Sim Guest Room window
+    icon: mdi:window-closed-variant
   sim_somebody_home:
     name: Sim somebody home
     icon: mdi:home-account
@@ -54,3 +57,14 @@ heating_sim:
       start_temperature: 14
       trvs: 0
       heat_rate: 0.8
+    # Spare rooms: setup_heating.py leaves these out, so you can
+    # practise "Add room" in the UI with real entities to pick
+    - name: Guest Room
+      start_temperature: 15.5
+      trvs: 2
+      window: input_boolean.sim_guest_room_window
+    - name: Bathroom
+      start_temperature: 18
+      trvs: 1
+      heat_rate: 3.0
+      loss_rate: 0.1
