@@ -21,6 +21,10 @@ The dashboard side of this system lives in its own repo: **[BarBaar44/Heating-Co
 
 ![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
 
+With several rooms, every room shows its role and the room the boiler heats for is highlighted:
+
+<img src="https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/multi-room-card.png" alt="Heating Control Card with several rooms" width="412">
+
 It is built around the entities in this repo and only ever writes to the `climate.virtual_thermostat_*` entities, so everything downstream (TRVs, the +1°C buffer, the boiler setpoint) stays the job of TRV Setpoint Sync:
 
 - **Winning room:** the header shows the room `sensor.delta_temperature` currently picks, with its current and target temperature, and highlights that room's row.
