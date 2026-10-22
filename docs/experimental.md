@@ -19,7 +19,7 @@ Maturity means:
 - **Beta**: the numbers are useful; details may still change.
 - **Stable**: not used yet; nothing here is stable.
 
-These features were first built as a [pyscript](https://github.com/custom-components/pyscript) app for one house (an ATAG boiler on OpenTherm with an ESPHome PID). The integration version is a port of that code to work with any setup, and it is new: the maturity above describes the analysis, not the port. If something looks wrong, please [open an issue](https://github.com/BarBaar44/thermostat/issues).
+The analysis has run in one house (an Atag boiler on OpenTherm with an ESPHome PID) since October 2026; the maturity above describes that analysis. If something looks wrong, please [open an issue](https://github.com/BarBaar44/thermostat/issues).
 
 ## Gas per degree-day
 
@@ -43,7 +43,7 @@ When the heating goes off in the evening (no room heating any more, between 18:0
 
 At 21:00 it takes the hourly forecast and predicts the room temperature at your **comfort time** (weekday and weekend times are settings). From the warm-up speed of earlier morning warm-ups in a similar outdoor temperature, it says when heating would have to start to reach the room's **warm** temperature by then. The next morning the prediction is compared with what really happened.
 
-**Why alpha:** predictions start after 2 valid nights and 2 morning warm-ups. In the original house, a back-test on the first 9 evenings was off by 0.2 to 0.8 °C. It needs many more nights, in different weather, before it can drive anything (for example an optimum start).
+**Why alpha:** predictions start after 2 valid nights and 2 morning warm-ups. In the house it was built in, a back-test on the first 9 evenings was off by 0.2 to 0.8 °C. It needs many more nights, in different weather, before it can drive anything (for example an optimum start).
 
 ## Warm-up episodes and PID advice
 
@@ -74,13 +74,3 @@ Everything stays on your Home Assistant. Files are stored in `config/cloudless_m
 - `state.json`, `night_state.json`: small state files.
 
 Switching the features off stops all sampling; the files and your entity choices are kept, so switching back on continues where it left off. Delete the folder to start over.
-
-## Differences from the pyscript version
-
-For anyone moving over from `pyscript/apps/heating_tuner.py`:
-
-- The followed room, comfort times and morning target (the room's warm temperature) are settings, not "Living Room", 07:30/08:00 and 18 °C.
-- A night starts and ends when **no room / some room** is heating, instead of the central heating switch.
-- "Garden doors" is now the followed room's window pause.
-- The summary time is fixed at 21:00, and the report service is `cloudless_multiroom_thermostat.experimental_report`.
-- Existing data in `/config/heating_tuner/` is not imported. Copy the files into the folder above to keep the history; the format is the same. Records are matched by room name, so old warm-ups only count for advice if the followed room has the same name as before (for example `Living Room`).
