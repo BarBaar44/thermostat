@@ -7,7 +7,10 @@ change. It never writes the Kp/Ki/Kd numbers in this phase.
 
 It also reports heating gas per degree-day (from Home Assistant's long-term
 statistics of the gas meter and the outdoor temperature) as the yardstick for
-whether a change saved gas.
+whether a change saved gas. Each complete day's gas is split into hot water
+and heating while the boiler signals are still in the recorder's history
+(7 days) and stored in gas_days.jsonl, with "away" when nobody was home the
+whole day (zone.home); away days don't count towards the figures.
 
 It also records each night's cooldown (heating off in the evening until it
 comes on in the morning) in nights.jsonl, and at the summary time predicts
@@ -28,6 +31,8 @@ Config (pyscript/config.yaml -> apps: heating_tuner:), all optional:
 import json
 from datetime import timedelta
 import homeassistant.util.dt as dt_util
+from homeassistant.components.recorder import get_instance, history
+from homeassistant.core import async_get_hass
 import heating_tuner_core as core
 import heating_night_core as night_core
 import heating_gas_core as gas_core
@@ -39,6 +44,7 @@ EPISODES = DATA_DIR + "/episodes.jsonl"
 STATE = DATA_DIR + "/state.json"
 NIGHTS = DATA_DIR + "/nights.jsonl"
 NIGHT_STATE = DATA_DIR + "/night_state.json"
+GAS_DAYS = DATA_DIR + "/gas_days.jsonl"
 SUMMARY_TIME = CFG.get("summary_time", "21:00")
 
 E_CLIMATE = "climate.thermostat_central_heating"
@@ -47,6 +53,7 @@ E_DELTA = "sensor.delta_temperature"
 E_CH_ENABLED = "switch.main_thermostat_central_heating_enabled"
 E_FLAME = "binary_sensor.diyless_thermostat_flame_on"
 E_DHW = "binary_sensor.main_thermostat_domestic_hot_water_active"
+E_CH_ACTIVE = "binary_sensor.main_thermostat_central_heating_active"
 E_WATER = "sensor.thermostat_water_temperature"
 E_RETURN = "sensor.diyless_thermostat_return_water_temperature"
 # Number of people home (persons in zone.home). People add heat - the evening
@@ -67,6 +74,7 @@ E_WEATHER = "weather.forecast_home"
 E_GAS_BEFORE6 = "sensor.frank_energie_gasprices_gas_price_tomorrow_before_6am_all_in"
 E_GAS_AFTER6 = "sensor.frank_energie_gasprices_gas_price_tomorrow_after_6am_all_in"
 MIN_NIGHT_HOURS = 4    # shorter heating pauses are not nights
+SPLIT_DAYS_BACK = 6    # complete days still fully in the recorder's 7-day history
 
 # In-memory only: an episode in progress is lost on an HA restart, which is
 # fine - a restart mid-episode would make it unreliable anyway.
@@ -382,9 +390,108 @@ def _stat_date(start):
     return dt_util.as_local(dt_util.parse_datetime(start)).date().isoformat()
 
 
+def _day_start(date):
+    return dt_util.start_of_local_day(dt_util.parse_datetime(date + "T12:00:00"))
+
+
+def _people(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _away(people, date):
+    """True if nobody was home the whole of `date` (zone.home history)."""
+    d0 = _day_start(date)
+    return gas_core.nobody_home(people, d0, d0 + timedelta(days=1))
+
+
+def _read_gas_days():
+    """
+    Stored gas days by date. A later line for the same date updates the
+    earlier one: days stored before the away flag existed get it added as a
+    separate {"date", "away"} line, keeping the file append-only.
+    """
+    days = {}
+    for d in store.read_episodes(GAS_DAYS, last_n=800):
+        days.setdefault(d["date"], {}).update(d)
+    return days
+
+
+def _store_gas_splits(now):
+    """
+    Split each complete day of the last SPLIT_DAYS_BACK that is not stored
+    yet, and add the away flag to stored days that don't have it.
+    """
+    stored = _read_gas_days()
+    midnight = dt_util.start_of_local_day(now)
+    window = [(midnight - timedelta(days=n)).date().isoformat()
+              for n in range(SPLIT_DAYS_BACK, 0, -1)]
+    dates = [d for d in window if "dhw_gas" not in stored.get(d, {})]
+    unflagged = [d for d in window if d in stored and "away" not in stored[d]]
+    if not dates and not unflagged:
+        return
+    start = _day_start(min(dates + unflagged))
+    response = recorder.get_statistics(
+        statistic_ids=[E_GAS],
+        start_time=start.isoformat(),
+        end_time=midnight.isoformat(),
+        period="hour",
+        types=["change"],
+        units={},
+        return_response=True,
+    )
+    # hass_is_global is off for pyscript, so fetch the instance directly
+    hass_ = async_get_hass()
+    states = await get_instance(hass_).async_add_executor_job(
+        history.get_significant_states, hass_, dt_util.as_utc(start), dt_util.as_utc(midnight),
+        [E_CH_ACTIVE, E_DHW, E_FLAME, E_PEOPLE], None, True, False, False, True,
+    )
+    changes = {}
+    for eid in (E_CH_ACTIVE, E_DHW, E_FLAME):
+        changes[eid] = [(st.last_changed, st.state == "on") for st in states.get(eid, [])]
+    people = [(st.last_changed, _people(st.state)) for st in states.get(E_PEOPLE, [])]
+    for date in unflagged:
+        flag = {"date": date, "away": _away(people, date)}
+        store.append_episode(GAS_DAYS, flag)
+        log.info(f"heating_tuner: gas day flag {flag}")
+
+    for date in dates:
+        hours = []
+        for r in response["statistics"].get(E_GAS, []):
+            if _stat_date(r["start"]) != date:
+                continue
+            h0 = r["start"] if not isinstance(r["start"], str) else dt_util.parse_datetime(r["start"])
+            h1 = h0 + timedelta(hours=1)
+            hours.append({
+                "gas": r.get("change"),
+                "ch": gas_core.on_minutes(changes[E_CH_ACTIVE], h0, h1),
+                "dhw": gas_core.on_minutes(changes[E_DHW], h0, h1),
+                "flame": gas_core.on_minutes(changes[E_FLAME], h0, h1),
+            })
+        if len(hours) < 23:   # 23 on the spring DST day
+            log.warning(f"heating_tuner: {len(hours)} gas hours for {date}, not split")
+            continue
+        split = gas_core.split_day(hours)
+        gas = sum([max(h["gas"] or 0.0, 0.0) for h in hours])
+        if split["flame_min"] == 0 and gas > 0.05:
+            log.warning(f"heating_tuner: no burner history for {date}, not split")
+            continue
+        split["date"] = date
+        split["gas"] = round(gas, 3)
+        split["away"] = _away(people, date)
+        store.append_episode(GAS_DAYS, split)
+        log.info(f"heating_tuner: gas split {split}")
+
+
 def _gas_summary():
     """Heating gas per degree-day from up to a year of daily statistics."""
     now = dt_util.now()
+    try:
+        _store_gas_splits(now)
+    except Exception as err:
+        log.warning(f"heating_tuner: gas split failed: {err}")
     try:
         response = recorder.get_statistics(
             statistic_ids=[E_GAS, E_OUTDOOR],
@@ -400,7 +507,8 @@ def _gas_summary():
         return None
     gas = {_stat_date(r["start"]): r.get("change") for r in stats.get(E_GAS, [])}
     outdoor = {_stat_date(r["start"]): r.get("mean") for r in stats.get(E_OUTDOOR, [])}
-    s = gas_core.summary(gas_core.build_days(gas, outdoor, now.date().isoformat()))
+    splits = _read_gas_days()
+    s = gas_core.summary(gas_core.build_days(gas, outdoor, now.date().isoformat(), splits))
     w7, w28 = s["w7"] or {}, s["w28"] or {}
     state.set(
         "sensor.heating_gas_per_degree_day",
@@ -416,6 +524,8 @@ def _gas_summary():
             "heating_gas_7": w7.get("heating_gas"),
             "base_per_day": s["base"],
             "base_days": s["base_days"],
+            "base_source": s["base_source"],
+            "away_days_28": s["away_28"],
             "last_day": s["last"],
         },
     )

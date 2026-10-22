@@ -21,6 +21,10 @@ The dashboard side of this system lives in its own repo: **[BarBaar44/Heating-Co
 
 ![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
 
+With several rooms, every room shows its role and the room the boiler heats for is highlighted:
+
+<img src="https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/multi-room-card.png" alt="Heating Control Card with several rooms" width="412">
+
 It is built around the entities in this repo and only ever writes to the `climate.virtual_thermostat_*` entities, so everything downstream (TRVs, the +1°C buffer, the boiler setpoint) stays the job of TRV Setpoint Sync:
 
 - **Winning room:** the header shows the room `sensor.delta_temperature` currently picks, with its current and target temperature, and highlights that room's row.
@@ -397,7 +401,10 @@ Once the predictions are reliable, they can drive an optimum start (start just l
 
 ## Gas per degree-day (did a change save gas?)
 
-Raw gas use per day mostly follows the weather, so it can't show whether a change helped. The tuner normalises it with **degree-days** (base 18°C: a day averaging 8°C outside counts 10) and reports **heating gas per degree-day** over the last 7 and 28 days. Hot water and cooking use gas every day, so their share - the median on summer days without heating demand, about 0.3 m³/day here - is subtracted first. It reads Home Assistant's long-term statistics of the gas meter and the outdoor temperature (up to a year back), so it has values straight away. Single days are too noisy in mild weather (one shower more or less outweighs the heating), which is why only rolling values are reported.
+Raw gas use per day mostly follows the weather, so it can't show whether a change helped. The tuner normalises it with **degree-days** (base 18°C: a day averaging 8°C outside counts 10) and reports **heating gas per degree-day** over the last 7 and 28 days. It reads Home Assistant's long-term statistics of the gas meter and the outdoor temperature (up to a year back), so it has values straight away. Single days are too noisy in mild weather (one shower more or less outweighs the heating), which is why only rolling values are reported.
+
+- **Hot water is split off per day.** The boiler also heats shower water every day (cooking here is electric). Each complete day is split into hot-water and heating gas from the hourly gas statistics and the boiler's heating, hot-water and flame history: an hour without heating demand burned only for hot water; in an hour with heating demand the hot-water part is its hot-water minutes at a measured rate (about 0.019 m³ per burner-minute, ~11 kW). Home Assistant keeps that history for only 7 days, so each split is stored in `gas_days.jsonl` as it is made. Older days, from before the split existed, fall back to a base: the median measured hot-water gas, or the median gas on summer days without heating demand.
+- **Days nobody was home are left out.** When everyone is away the heating schedule switches the heating off and nobody showers, so those days add degree-days with no gas and would make both the heating figure and the hot-water base look better than they are. A day counts as away only if `zone.home` was 0 for the whole calendar day - so only during an absence of more than 24 hours, never a normal day at work or school. The day you come back stays in: warming the house up again is real gas the trip cost.
 
 
 1. Install the [pyscript](https://github.com/custom-components/pyscript) integration (HACS) and copy `pyscript/apps/` and `pyscript/modules/` from this repo into `/config/pyscript/`.
@@ -419,6 +426,6 @@ Raw gas use per day mostly follows the weather, so it can't show whether a chang
 
 - A daily persistent notification at 21:00 ("Heating tuner *date*") with the day's warm-ups, the night, tonight's prediction and the current recommendation; `pyscript.heating_tuner_report` shows it on demand.
 - `sensor.heating_tuner_last_overshoot`, `sensor.heating_tuner_recommendation`, `sensor.heating_tuner_night_prediction`, `sensor.heating_gas_per_degree_day`.
-- Data in `/config/heating_tuner/`: `episodes.jsonl` and `nights.jsonl` (append-only, one JSON object per line) plus `state.json` and `night_state.json`. Not committed to git.
+- Data in `/config/heating_tuner/`: `episodes.jsonl`, `nights.jsonl` and `gas_days.jsonl` (append-only, one JSON object per line) plus `state.json` and `night_state.json`. Not committed to git.
 
 **If you're copying this approach:** pyscript runs your code in its own interpreter, which does **not** support generator expressions (`sum(1 for ...)`, `any(x for ...)`, `next((...), None)`). Use list comprehensions instead - otherwise the code only fails the first time that path actually runs, which for an analysis that runs once per warm-up can be days later.
