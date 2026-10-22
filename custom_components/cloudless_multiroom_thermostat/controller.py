@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from datetime import timedelta
 import json
 import logging
 import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.climate import (
     ATTR_MAX_TEMP,
     ATTR_MIN_TEMP,
     ATTR_TARGET_TEMP_STEP,
-    DOMAIN as CLIMATE_DOMAIN,
     SERVICE_SET_TEMPERATURE,
+)
+from homeassistant.components.climate import (
+    DOMAIN as CLIMATE_DOMAIN,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -30,8 +32,15 @@ from homeassistant.const import (
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
-from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.core import (
+    CALLBACK_TYPE,
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    callback,
+)
 from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
@@ -44,7 +53,6 @@ from homeassistant.helpers.start import async_at_started
 from .const import (
     AWAY_ECO,
     AWAY_OFF,
-    CONF_AREA,
     CONF_AWAY_MODE,
     CONF_BUFFER,
     CONF_CH_SWITCH,
@@ -74,6 +82,7 @@ from .const import (
     DEFAULT_WARM_TEMP,
     DEFAULT_WINDOW_CLOSE_DELAY,
     DEFAULT_WINDOW_OPEN_DELAY,
+    DOMAIN,
     HEAT_SOURCE_SWITCH,
     PAUSE_AWAY,
     PAUSE_MANUAL,
@@ -86,7 +95,14 @@ from .const import (
     WRITE_GRACE_S,
     signal_update,
 )
-from .logic import RoomDemand, Winner, round_to_step, select_winner, switch_should_run, trv_target
+from .logic import (
+    RoomDemand,
+    Winner,
+    round_to_step,
+    select_winner,
+    switch_should_run,
+    trv_target,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -140,6 +156,7 @@ class HeatingController:
         self.rooms: dict[str, Room] = {}
         self.winner = Winner(None, WINNER_OFF, self.off_temp, None, 0.0)
         self.present = True
+        self.experimental: Any = None  # ExperimentalRunner when enabled in options
         self._unsubs: list[CALLBACK_TYPE] = []
         self._sent: dict[str, tuple[Any, float]] = {}
         self._started = False
@@ -191,10 +208,10 @@ class HeatingController:
         return room.target
 
     def area_label(self, room: Room) -> str:
-        """Area name if the room has one, else the room name (legacy sensor, card)."""
-        area_id = room.config.get(CONF_AREA)
-        if area_id:
-            area = ar.async_get(self.hass).async_get_area(area_id)
+        """Area the user put the room's device in, else the room name (legacy sensor, card)."""
+        device = dr.async_get(self.hass).async_get_device(identifiers={(DOMAIN, room.room_id)})
+        if device is not None and device.area_id:
+            area = ar.async_get(self.hass).async_get_area(device.area_id)
             if area:
                 return area.name
         return room.name

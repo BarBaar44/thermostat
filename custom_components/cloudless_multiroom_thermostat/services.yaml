@@ -14,3 +14,9 @@ set_all_off:
       selector:
         config_entry:
           integration: cloudless_multiroom_thermostat
+experimental_report:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: cloudless_multiroom_thermostat

@@ -1,11 +1,75 @@
 # 🌡️ Thermostat - A Cloud-Free, Multi-Room Home Assistant Heating System
 
 > [!IMPORTANT]
-> **This setup is moving to a Home Assistant custom integration (HACS): Cloudless Multiroom Thermostat.**
-> The automations, scripts and template sensor in this repo will be replaced by it. More details will follow here once it is ready.
+> **This setup is now a Home Assistant integration: [Cloudless Multiroom Thermostat](#cloudless-multiroom-thermostat-integration).** Install it through HACS and set everything up from the UI. The automations, scripts and template sensor further down are the original YAML setup it replaces; they stay as reference.
 
 
 A local, OpenTherm-based central heating setup built entirely on Home Assistant and ESPHome. One "virtual thermostat" per room drives both the physical TRVs and the boiler itself, with automations handling daily scheduling, passive-solar assist, and open-window detection.
+
+# Cloudless Multiroom Thermostat (integration)
+
+A Home Assistant custom integration that turns any number of rooms, room temperature sensors and radiator valves plus one heat source into a multi-room heating system, configured entirely from the UI. It does what the YAML setup below does (one thermostat per room, the room that needs heat most drives the boiler, TRVs follow their room), but for any house.
+
+## Install
+
+Requires Home Assistant 2026.10 or newer.
+
+1. In HACS: **⋮ > Custom repositories**, add `https://github.com/BarBaar44/thermostat` with type **Integration**.
+2. Install **Cloudless Multiroom Thermostat** and restart Home Assistant.
+3. **Settings > Devices & services > Add integration > Cloudless Multiroom Thermostat.**
+
+## Set up
+
+**The heating system** (one per heat source):
+
+1. A name and the **heat source type**:
+   - **On/off switch**: a relay boiler. It turns on when a room is the hysteresis (default 0.3 °C) below its target and off when every room reached its target.
+   - **Climate entity**: an ESPHome or DIYLess OpenTherm thermostat, or any thermostat with a setpoint. It receives the target of the room that needs heat most.
+   - **OpenTherm Gateway (OTGW)**: the OTGW climate entity, which receives that same target.
+2. The heat source entity and, optionally, a **central heating enable** switch that is on while any room is set to heat.
+3. Settings: the **off temperature** sent when nothing needs heat (default 10 °C), an optional **presence** entity with what happens when everybody is away (rooms off, or lowered to eco), and how often room temperatures are resent to TRV inputs.
+
+**Rooms**: on the integration page, **Add room**, in two steps:
+
+1. Name, eco and warm temperature, the overshoot buffer (default 1.0 °C) and the target range and step.
+2. The room temperature sensor, the TRVs (none is fine: the room then only adds heat demand), the TRVs' external temperature inputs (for example Sonoff TRVZB or Shelly BLU TRV), and window or door sensors with their open and close delays.
+
+Add as many rooms as you like; the pencil next to a room edits it. To put a room in an area, set the area on the room's device page.
+
+## What it creates
+
+- **A climate entity per room**: Heat/Off, target temperature, presets **Eco** and **Warm** (setting a temperature yourself switches to **Manual**). Attributes show its role (`winner`, `passenger`, `calls_for_heat`, `reached`, `paused`, `off`) and why it is paused.
+- **Winning room** sensor (the room driving the heat source, or Off) and **Winning room temperature** (that room's temperature, for a firmware PID that needs it as its process value).
+- Per room: **Paused** (window, away or manual, with the reason) and, with window sensors, a debounced **Window** sensor.
+- **Delta temperature (legacy)**: disabled by default; the same JSON as the old Delta Temperature template, for migrating.
+- Services: `pause_room` / `resume_room` (hold a room off and release it), `set_all_off`.
+
+How it decides: the room with the biggest gap between target and temperature is the **winner**; its target goes to the heat source and its TRVs get the overshoot buffer. Every other heating room gets its exact target and its TRVs open on their own while the water is warm enough. An open window holds its room off, then returns it to what it was; when everybody is away, rooms go off or to eco and come back when someone is home. All of this survives a restart.
+
+Scheduling is left to you: an automation or a scheduler card that sets presets or temperatures on the room climates.
+
+## Experimental features
+
+Optional, observe-only diagnostics: warm-up episodes with PID advice, a night cooldown model that predicts the morning, gas per degree-day with the hot water split off, and an evening report. Switch them on under **Configure > Enable experimental features**. What each one does, what it needs and how mature it is: **[docs/experimental.md](docs/experimental.md)**.
+
+## Moving over from the YAML setup
+
+1. Note your current setpoints, then delete the Generic Thermostat helpers (`climate.virtual_thermostat_*`).
+2. Add the integration and your rooms with the same TRVs and sensors.
+3. Rename each new room climate (created as `climate.<room name>`) to its old `climate.virtual_thermostat_*` ID, so dashboards and the [Heating Control Card](#dashboard-heating-control-card) keep working.
+4. For the card and anything else that reads `sensor.delta_temperature`: enable **Delta temperature (legacy)** and rename it to `sensor.delta_temperature`.
+5. Point the ESPHome thermostat's room temperature at **Winning room temperature** (or rename that sensor to `sensor.virtual_heating_temperature`).
+6. Disable TRV Setpoint Sync, the room temperature to TRV sync, Garden Door Heating Pause and the pause/resume scripts. Keep the Heating Schedule automation, but let it set presets or temperatures only: the integration's presence setting replaces its leaving-home branch.
+
+## Test environment
+
+[`dev/`](dev/README.md) has a simulated house (rooms that warm up and cool down, TRVs, a boiler, gas meter and weather) to try everything without real hardware, as a Docker container or a VM for Virtual Machine Manager.
+
+---
+
+# The original YAML setup
+
+Everything from here on documents the hand-built setup the integration grew out of: the hardware, the ESPHome firmware and the automations.
 
 ## Goals
 
@@ -43,6 +107,14 @@ Picking rooms, renaming them and every other option are in the card's README.
 
 ## Table of Contents
 
+- [Cloudless Multiroom Thermostat (integration)](#cloudless-multiroom-thermostat-integration)
+  - [Install](#install)
+  - [Set up](#set-up)
+  - [What it creates](#what-it-creates)
+  - [Experimental features](#experimental-features)
+  - [Moving over from the YAML setup](#moving-over-from-the-yaml-setup)
+  - [Test environment](#test-environment)
+- [The original YAML setup](#the-original-yaml-setup)
 - [Dashboard: Heating Control Card](#dashboard-heating-control-card)
 - [Hardware](#hardware)
   - [Boiler](#boiler)
@@ -362,6 +434,8 @@ Rule 0 is a defense-in-depth fix for this class of bug: it stops any stuck/overs
 **If you're copying this approach:** any "pick the best candidate, with a fallback if none qualify" template pattern should be checked for this exact edge case - make sure the fallback branch can't be mistaken for the genuine, unqualified `best` result by whatever consumes it downstream.
 
 # Experimental: self-tuning heating and night cooldown profiling
+
+> **Moving into the integration:** these features are now built into Cloudless Multiroom Thermostat as optional experimental features. See [docs/experimental.md](docs/experimental.md) for what each one does and how mature it is. The pyscript version below keeps running until the switch-over.
 
 > **Status: experimental, observe only.** Everything in this section records data and says what it *would* do - nothing here changes the heating yet. The code is in [`pyscript/`](pyscript/): a [pyscript](https://github.com/custom-components/pyscript) app ([`apps/heating_tuner.py`](pyscript/apps/heating_tuner.py), the Home Assistant glue) with the logic in plain-Python modules that have no Home Assistant dependencies ([`modules/heating_tuner_core.py`](pyscript/modules/heating_tuner_core.py) for warm-ups, [`modules/heating_night_core.py`](pyscript/modules/heating_night_core.py) for nights, [`modules/heating_gas_core.py`](pyscript/modules/heating_gas_core.py) for gas per degree-day, [`modules/heating_tuner_store.py`](pyscript/modules/heating_tuner_store.py) for file storage).
 

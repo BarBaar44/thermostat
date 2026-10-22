@@ -1,7 +1,12 @@
 {
   "domain": "cloudless_multiroom_thermostat",
   "name": "Cloudless Multiroom Thermostat",
-  "codeowners": ["@BarBaar44"],
+  "after_dependencies": [
+    "recorder"
+  ],
+  "codeowners": [
+    "@BarBaar44"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/BarBaar44/thermostat",
@@ -9,5 +14,5 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/BarBaar44/thermostat/issues",
   "requirements": [],
-  "version": "0.1.0"
+  "version": "1.0.0"
 }

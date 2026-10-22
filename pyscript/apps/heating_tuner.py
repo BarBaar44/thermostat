@@ -261,9 +261,7 @@ def _night_sample():
 
 
 def _save_night():
-    night_state = store.read_state(NIGHT_STATE)
-    night_state["night"] = night
-    store.write_state(NIGHT_STATE, night_state)
+    store.update_state(NIGHT_STATE, {"night": night})
 
 
 @time_trigger("startup")
@@ -312,10 +310,7 @@ def _finish_night(end_reason):
     global night
     n, night = night, None
     n["samples"].append(_night_sample())
-    night_state = store.read_state(NIGHT_STATE)
-    night_state["night"] = None
-    prediction = night_state.get("prediction")
-    store.write_state(NIGHT_STATE, night_state)
+    prediction = store.update_state(NIGHT_STATE, {"night": None}).get("prediction")
 
     samples = n["samples"]
     hours = (dt_util.parse_datetime(samples[-1]["t"]) - dt_util.parse_datetime(samples[0]["t"])).total_seconds() / 3600
@@ -355,9 +350,7 @@ def _predict():
         _float(E_GAS_BEFORE6),
         _float(E_GAS_AFTER6),
     )
-    night_state = store.read_state(NIGHT_STATE)
-    night_state["prediction"] = prediction
-    store.write_state(NIGHT_STATE, night_state)
+    store.update_state(NIGHT_STATE, {"prediction": prediction})
     state.set(
         "sensor.heating_tuner_night_prediction",
         prediction["suggested_start"][11:16] if prediction["suggested_start"] else "learning",

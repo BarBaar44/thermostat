@@ -13,6 +13,8 @@ first, creating the owner account, and then use that login:
 
   python3 setup_heating.py --onboard --username test --password testtest
   python3 setup_heating.py --onboard --wait 900 ...   # wait for HA to come up
+  python3 setup_heating.py --token <token> --experimental  # also switch on the
+                                                           # experimental features
 """
 
 from __future__ import annotations
@@ -114,27 +116,32 @@ def onboard(api: Api, username: str, password: str) -> None:
     print(f"Onboarding done, owner '{username}' created")
 
 
-def room_data(room: dict) -> dict:
+def room_steps(room: dict) -> list[dict]:
+    """The two room form steps: room and temperatures, then sensors."""
     key = slug(room["name"])
     count = room["trvs"]
-    return {
-        "name": room["name"],
-        "temperature_sensor": f"sensor.sim_{key}_temperature",
-        "trvs": [f"climate.sim_{key}_trv_{i}" for i in range(1, count + 1)],
-        "external_temperature_inputs": [f"number.sim_{key}_trv_{i}_external_temperature" for i in range(1, count + 1)],
-        "window_sensors": [room["window"]] if room["window"] else [],
-        "window_open_delay": 30,
-        "window_close_delay": 15,
-        "eco_temperature": 15.0,
-        "warm_temperature": room["warm"],
-        "overshoot_buffer": 1.0,
-        "min_temp": 5.0,
-        "max_temp": 25.0,
-        "target_temp_step": "0.5",
-    }
+    return [
+        {
+            "name": room["name"],
+            "eco_temperature": 15.0,
+            "warm_temperature": room["warm"],
+            "overshoot_buffer": 1.0,
+            "min_temp": 5.0,
+            "max_temp": 25.0,
+            "target_temp_step": "0.5",
+        },
+        {
+            "temperature_sensor": f"sensor.sim_{key}_temperature",
+            "trvs": [f"climate.sim_{key}_trv_{i}" for i in range(1, count + 1)],
+            "external_temperature_inputs": [f"number.sim_{key}_trv_{i}_external_temperature" for i in range(1, count + 1)],
+            "window_sensors": [room["window"]] if room["window"] else [],
+            "window_open_delay": 30,
+            "window_close_delay": 15,
+        },
+    ]
 
 
-def create_heating(api: Api, source: str) -> None:
+def create_heating(api: Api, source: str) -> str:
     existing = [e for e in api.call("GET", "/api/config/config_entries/entry") if e["domain"] == DOMAIN]
     if existing:
         sys.exit(
@@ -166,14 +173,57 @@ def create_heating(api: Api, source: str) -> None:
         sys.exit(f"Config flow did not finish: {result}")
     entry_id = result["result"]["entry_id"]
     print(f"Created '{title}' ({entry_id})")
+    created = entry_id
 
     sub = "/api/config/config_entries/subentries/flow"
     for room in ROOMS:
         start = api.call("POST", sub, {"handler": [entry_id, "room"]})
-        done = api.step(sub, start["flow_id"], room_data(room))
+        for step in room_steps(room):
+            done = api.step(sub, start["flow_id"], step)
         if done.get("type") != "create_entry":
             sys.exit(f"Room {room['name']} did not finish: {done}")
         print(f"  added room {room['name']} ({room['trvs']} TRVs)")
+    return created
+
+
+def enable_experimental(api: Api, entry_id: str, source: str) -> None:
+    """Options flow: keep the settings, tick experimental, point it at the sim entities."""
+    flow = "/api/config/config_entries/options/flow"
+    start = api.call("POST", flow, {"handler": entry_id})
+    settings = {
+        "off_temperature": 10,
+        "presence_entity": "input_boolean.sim_somebody_home",
+        "away_mode": "off",
+        "skip_unchanged_writes": True,
+        "external_temp_heartbeat": 60,
+        "experimental": True,
+    }
+    if source == "switch":
+        settings.update({"heat_source_entity": "switch.sim_boiler_relay", "hysteresis": 0.3})
+    else:
+        settings.update({"heat_source_entity": "climate.sim_boiler", "ch_switch": "switch.sim_ch_enabled"})
+    step = api.step(flow, start["flow_id"], settings)
+    living = next(o["value"] for f in step["data_schema"] if f["name"] == "exp_room"
+                  for o in f["selector"]["select"]["options"] if o["label"] == "Living Room")
+    done = api.step(
+        flow,
+        start["flow_id"],
+        {
+            "exp_room": living,
+            "exp_comfort_weekday": "07:30:00",
+            "exp_comfort_weekend": "08:00:00",
+            "exp_outdoor": "sensor.sim_outdoor_temperature",
+            "exp_weather": "weather.sim_weather",
+            "exp_people": "zone.home",
+            "exp_gas": "sensor.sim_gas_meter",
+            "exp_flame": "binary_sensor.sim_boiler_flame",
+            "exp_dhw": "binary_sensor.sim_hot_water_active",
+            "exp_ch_active": "binary_sensor.sim_central_heating_active",
+        },
+    )
+    if done.get("type") != "create_entry":
+        sys.exit(f"Experimental options did not finish: {done}")
+    print("  experimental features on (following Living Room)")
 
 
 def main() -> None:
@@ -185,6 +235,7 @@ def main() -> None:
     parser.add_argument("--password", default="testtest")
     parser.add_argument("--wait", type=int, default=0, help="Seconds to wait for HA to come up")
     parser.add_argument("--source", choices=["climate", "switch"], default="climate")
+    parser.add_argument("--experimental", action="store_true", help="Enable the experimental features with the sim entities")
     args = parser.parse_args()
     if not args.token and not args.onboard:
         parser.error("give --token, or --onboard on a fresh Home Assistant")
@@ -194,7 +245,9 @@ def main() -> None:
     api = Api(args.url, args.token)
     if args.onboard:
         onboard(api, args.username, args.password)
-    create_heating(api, args.source)
+    entry_id = create_heating(api, args.source)
+    if args.experimental:
+        enable_experimental(api, entry_id, args.source)
     print("Done. Set rooms to heat in the UI.")
 
 
