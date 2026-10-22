@@ -31,7 +31,7 @@ from homeassistant.const import (
     STATE_UNKNOWN,
 )
 from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant, callback
-from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import area_registry as ar, device_registry as dr
 from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
@@ -44,7 +44,6 @@ from homeassistant.helpers.start import async_at_started
 from .const import (
     AWAY_ECO,
     AWAY_OFF,
-    CONF_AREA,
     CONF_AWAY_MODE,
     CONF_BUFFER,
     CONF_CH_SWITCH,
@@ -74,6 +73,7 @@ from .const import (
     DEFAULT_WARM_TEMP,
     DEFAULT_WINDOW_CLOSE_DELAY,
     DEFAULT_WINDOW_OPEN_DELAY,
+    DOMAIN,
     HEAT_SOURCE_SWITCH,
     PAUSE_AWAY,
     PAUSE_MANUAL,
@@ -191,10 +191,10 @@ class HeatingController:
         return room.target
 
     def area_label(self, room: Room) -> str:
-        """Area name if the room has one, else the room name (legacy sensor, card)."""
-        area_id = room.config.get(CONF_AREA)
-        if area_id:
-            area = ar.async_get(self.hass).async_get_area(area_id)
+        """Area the user put the room's device in, else the room name (legacy sensor, card)."""
+        device = dr.async_get(self.hass).async_get_device(identifiers={(DOMAIN, room.room_id)})
+        if device is not None and device.area_id:
+            area = ar.async_get(self.hass).async_get_area(device.area_id)
             if area:
                 return area.name
         return room.name

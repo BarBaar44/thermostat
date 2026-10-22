@@ -354,19 +354,17 @@ SENSOR_STEP = {k: v for k, v in OFFICE.items() if k in (
     "window_open_delay", "window_close_delay")}
 
 
-def _room_step(name: str, create_area: bool = False, **extra) -> dict:
-    return {**ROOM_STEP, "name": name, "create_area": create_area, "target_temp_step": "0.5", **extra}
+def _room_step(name: str, **extra) -> dict:
+    return {**ROOM_STEP, "name": name, "target_temp_step": "0.5", **extra}
 
 
-async def test_add_room_three_steps_existing_area(hass: HomeAssistant, setup) -> None:
-    from homeassistant.helpers import area_registry as ar, device_registry as dr
-
+async def test_add_room_two_steps(hass: HomeAssistant, setup) -> None:
     entry, _ = setup
-    zolder = ar.async_get(hass).async_create("Zolder")
     flows = hass.config_entries.subentries
     result = await flows.async_init((entry.entry_id, "room"), context={"source": config_entries.SOURCE_USER})
     assert result["step_id"] == "user"
-    assert "temperature_sensor" not in {str(k) for k in result["data_schema"].schema}
+    fields = {str(k) for k in result["data_schema"].schema}
+    assert "temperature_sensor" not in fields and not {"area", "create_area"} & fields
 
     result = await flows.async_configure(result["flow_id"], _room_step("office"))
     assert result["errors"] == {"name": "name_exists"}
@@ -376,68 +374,44 @@ async def test_add_room_three_steps_existing_area(hass: HomeAssistant, setup) ->
     assert result["step_id"] == "sensors"
 
     result = await flows.async_configure(result["flow_id"], {**SENSOR_STEP, "trvs": []})
-    assert result["step_id"] == "area"
-    fields = {str(k): v for k, v in result["data_schema"].schema.items()}
-    assert set(fields) == {"area"}
-    assert "Zolder" in [o["label"] for o in fields["area"].config["options"]]
-
-    result = await flows.async_configure(result["flow_id"], {"area": zolder.id})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     sub = next(s for s in entry.subentries.values() if s.title == "Attic")
-    assert sub.data["area"] == zolder.id and sub.data["target_temp_step"] == 0.5
-    assert "create_area" not in sub.data
+    assert sub.data["target_temp_step"] == 0.5 and "area" not in sub.data
     assert hass.states.get("climate.attic") is not None
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, sub.subentry_id)})
-    assert device.area_id == zolder.id
 
 
-async def test_add_room_with_new_area(hass: HomeAssistant, setup) -> None:
-    from homeassistant.helpers import area_registry as ar
-
-    entry, _ = setup
-    flows = hass.config_entries.subentries
-    result = await flows.async_init((entry.entry_id, "room"), context={"source": config_entries.SOURCE_USER})
-    result = await flows.async_configure(result["flow_id"], _room_step("Guest Room", create_area=True))
-    result = await flows.async_configure(result["flow_id"], {**SENSOR_STEP, "trvs": []})
-    fields = {str(k) for k in result["data_schema"].schema}
-    assert fields == {"new_area"}
-    result = await flows.async_configure(result["flow_id"], {"new_area": " test "})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    await hass.async_block_till_done()
-    area = ar.async_get(hass).async_get_area_by_name("test")
-    sub = next(s for s in entry.subentries.values() if s.title == "Guest Room")
-    assert area is not None and sub.data["area"] == area.id and "new_area" not in sub.data
-
-
-async def test_add_room_without_area(hass: HomeAssistant, setup) -> None:
-    entry, _ = setup
-    flows = hass.config_entries.subentries
-    result = await flows.async_init((entry.entry_id, "room"), context={"source": config_entries.SOURCE_USER})
-    result = await flows.async_configure(result["flow_id"], _room_step("Hall"))
-    result = await flows.async_configure(result["flow_id"], {**SENSOR_STEP, "trvs": []})
-    result = await flows.async_configure(result["flow_id"], {})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    sub = next(s for s in entry.subentries.values() if s.title == "Hall")
-    assert "area" not in sub.data
-
-
-async def test_edit_room_three_steps_moves_device(hass: HomeAssistant, setup) -> None:
+async def test_edit_room_keeps_device_area_set_in_ha(hass: HomeAssistant, setup) -> None:
+    """The user puts the room device in an area from HA; editing the room must not undo it."""
     from homeassistant.helpers import area_registry as ar, device_registry as dr
 
     entry, _ = setup
     office = next(s for s in entry.subentries.values() if s.title == "Office")
     study = ar.async_get(hass).async_create("Study")
+    devices = dr.async_get(hass)
+    device = devices.async_get_device(identifiers={(DOMAIN, office.subentry_id)})
+    devices.async_update_device(device.id, area_id=study.id)
+
     flows = hass.config_entries.subentries
     result = await entry.start_subentry_reconfigure_flow(hass, office.subentry_id)
     assert result["step_id"] == "reconfigure"
     result = await flows.async_configure(result["flow_id"], _room_step("Office", warm_temperature=21.0))
     assert result["step_id"] == "sensors"
     result = await flows.async_configure(result["flow_id"], SENSOR_STEP)
-    result = await flows.async_configure(result["flow_id"], {"area": study.id})
     assert result["type"] is FlowResultType.ABORT and result["reason"] == "reconfigure_successful"
     await hass.async_block_till_done()
-    sub = entry.subentries[office.subentry_id]
-    assert sub.data["warm_temperature"] == 21.0 and sub.data["area"] == study.id
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, office.subentry_id)})
-    assert device.area_id == study.id
+    assert entry.subentries[office.subentry_id].data["warm_temperature"] == 21.0
+    assert devices.async_get_device(identifiers={(DOMAIN, office.subentry_id)}).area_id == study.id
+
+
+async def test_winner_area_comes_from_device_area(hass: HomeAssistant, setup) -> None:
+    from homeassistant.helpers import area_registry as ar, device_registry as dr
+
+    entry, _ = setup
+    living = next(s for s in entry.subentries.values() if s.title == "Living")
+    lounge = ar.async_get(hass).async_create("Lounge")
+    devices = dr.async_get(hass)
+    device = devices.async_get_device(identifiers={(DOMAIN, living.subentry_id)})
+    devices.async_update_device(device.id, area_id=lounge.id)
+    await _heat(hass, "climate.living")
+    assert hass.states.get("sensor.heating_winning_room").attributes["area"] == "Lounge"

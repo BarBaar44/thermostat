@@ -77,10 +77,9 @@
       "step": {
         "user": {
           "title": "Add room",
-          "description": "Step 1 of 3: name and temperatures.",
+          "description": "Step 1 of 2: name and temperatures.",
           "data": {
             "name": "Room name",
-            "create_area": "Create a new area for this room",
             "eco_temperature": "Eco temperature",
             "warm_temperature": "Warm temperature",
             "overshoot_buffer": "Overshoot buffer",
@@ -89,16 +88,14 @@
             "target_temp_step": "Target step"
           },
           "data_description": {
-            "create_area": "On: step 3 asks for the name of a new area. Off: step 3 lets you pick an existing area.",
             "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source."
           }
         },
         "reconfigure": {
           "title": "Edit room",
-          "description": "Step 1 of 3: name and temperatures.",
+          "description": "Step 1 of 2: name and temperatures.",
           "data": {
             "name": "Room name",
-            "create_area": "Create a new area for this room",
             "eco_temperature": "Eco temperature",
             "warm_temperature": "Warm temperature",
             "overshoot_buffer": "Overshoot buffer",
@@ -107,13 +104,12 @@
             "target_temp_step": "Target step"
           },
           "data_description": {
-            "create_area": "On: step 3 asks for the name of a new area. Off: step 3 lets you pick an existing area.",
             "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source."
           }
         },
         "sensors": {
           "title": "Sensors and valves",
-          "description": "Step 2 of 3 for {room}.",
+          "description": "Step 2 of 2 for {room}.",
           "data": {
             "temperature_sensor": "Room temperature sensor",
             "trvs": "Radiator valves (TRVs)",
@@ -126,18 +122,6 @@
             "trvs": "Optional. A room without TRVs only adds heat demand.",
             "external_temperature_inputs": "Optional. Number entities that receive the room temperature (for example Sonoff TRVZB or Shelly BLU TRV).",
             "window_sensors": "Optional. Heating in this room pauses while any of them is open."
-          }
-        },
-        "area": {
-          "title": "Area",
-          "description": "Step 3 of 3 for {room}. Optional: leave empty for no area.",
-          "data": {
-            "area": "Area",
-            "new_area": "New area name"
-          },
-          "data_description": {
-            "area": "An existing area for this room.",
-            "new_area": "Creates an area with this name and puts the room in it. An existing area with the same name is reused."
           }
         }
       },

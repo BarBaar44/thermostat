@@ -115,13 +115,12 @@ def onboard(api: Api, username: str, password: str) -> None:
 
 
 def room_steps(room: dict) -> list[dict]:
-    """The three room form steps: room and temperatures, sensors, area (none)."""
+    """The two room form steps: room and temperatures, then sensors."""
     key = slug(room["name"])
     count = room["trvs"]
     return [
         {
             "name": room["name"],
-            "create_area": False,
             "eco_temperature": 15.0,
             "warm_temperature": room["warm"],
             "overshoot_buffer": 1.0,
@@ -137,7 +136,6 @@ def room_steps(room: dict) -> list[dict]:
             "window_open_delay": 30,
             "window_close_delay": 15,
         },
-        {},
     ]
 
 
