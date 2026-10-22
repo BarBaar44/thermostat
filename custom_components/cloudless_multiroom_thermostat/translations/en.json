@@ -77,16 +77,10 @@
       "step": {
         "user": {
           "title": "Add room",
+          "description": "Step 1 of 3: name and temperatures.",
           "data": {
             "name": "Room name",
-            "area": "Area",
-            "new_area": "New area name",
-            "temperature_sensor": "Room temperature sensor",
-            "trvs": "Radiator valves (TRVs)",
-            "external_temperature_inputs": "TRV external temperature inputs",
-            "window_sensors": "Window and door sensors",
-            "window_open_delay": "Window open delay",
-            "window_close_delay": "Window close delay",
+            "create_area": "Create a new area for this room",
             "eco_temperature": "Eco temperature",
             "warm_temperature": "Warm temperature",
             "overshoot_buffer": "Overshoot buffer",
@@ -95,26 +89,16 @@
             "target_temp_step": "Target step"
           },
           "data_description": {
-            "trvs": "Optional. A room without TRVs only adds heat demand.",
-            "external_temperature_inputs": "Optional. Number entities that receive the room temperature (for example Sonoff TRVZB or Shelly BLU TRV).",
-            "window_sensors": "Optional. Heating in this room pauses while any of them is open.",
-            "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source.",
-            "area": "Optional. An existing area for this room.",
-            "new_area": "Optional. Creates an area with this name and puts the room in it (an existing area with the same name is reused). Leave Area empty when you use this."
+            "create_area": "On: step 3 asks for the name of a new area. Off: step 3 lets you pick an existing area.",
+            "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source."
           }
         },
         "reconfigure": {
           "title": "Edit room",
+          "description": "Step 1 of 3: name and temperatures.",
           "data": {
             "name": "Room name",
-            "area": "Area",
-            "new_area": "New area name",
-            "temperature_sensor": "Room temperature sensor",
-            "trvs": "Radiator valves (TRVs)",
-            "external_temperature_inputs": "TRV external temperature inputs",
-            "window_sensors": "Window and door sensors",
-            "window_open_delay": "Window open delay",
-            "window_close_delay": "Window close delay",
+            "create_area": "Create a new area for this room",
             "eco_temperature": "Eco temperature",
             "warm_temperature": "Warm temperature",
             "overshoot_buffer": "Overshoot buffer",
@@ -123,12 +107,37 @@
             "target_temp_step": "Target step"
           },
           "data_description": {
+            "create_area": "On: step 3 asks for the name of a new area. Off: step 3 lets you pick an existing area.",
+            "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source."
+          }
+        },
+        "sensors": {
+          "title": "Sensors and valves",
+          "description": "Step 2 of 3 for {room}.",
+          "data": {
+            "temperature_sensor": "Room temperature sensor",
+            "trvs": "Radiator valves (TRVs)",
+            "external_temperature_inputs": "TRV external temperature inputs",
+            "window_sensors": "Window and door sensors",
+            "window_open_delay": "Window open delay",
+            "window_close_delay": "Window close delay"
+          },
+          "data_description": {
             "trvs": "Optional. A room without TRVs only adds heat demand.",
             "external_temperature_inputs": "Optional. Number entities that receive the room temperature (for example Sonoff TRVZB or Shelly BLU TRV).",
-            "window_sensors": "Optional. Heating in this room pauses while any of them is open.",
-            "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source.",
-            "area": "Optional. An existing area for this room.",
-            "new_area": "Optional. Creates an area with this name and puts the room in it (an existing area with the same name is reused). Leave Area empty when you use this."
+            "window_sensors": "Optional. Heating in this room pauses while any of them is open."
+          }
+        },
+        "area": {
+          "title": "Area",
+          "description": "Step 3 of 3 for {room}. Optional: leave empty for no area.",
+          "data": {
+            "area": "Area",
+            "new_area": "New area name"
+          },
+          "data_description": {
+            "area": "An existing area for this room.",
+            "new_area": "Creates an area with this name and puts the room in it. An existing area with the same name is reused."
           }
         }
       },
@@ -136,7 +145,7 @@
         "max_below_min": "Maximum must be higher than minimum.",
         "preset_out_of_range": "Must be between minimum and maximum.",
         "name_exists": "A room with this name already exists.",
-        "area_and_new_area": "Choose an existing area or type a new area name, not both."
+        "name_required": "Enter a room name."
       },
       "abort": {
         "reconfigure_successful": "Room updated."

@@ -24,6 +24,7 @@ from .const import (
     CONF_AWAY_MODE,
     CONF_BUFFER,
     CONF_CH_SWITCH,
+    CONF_CREATE_AREA,
     CONF_ECO_TEMP,
     CONF_EXT_TEMP,
     CONF_HEARTBEAT_MIN,
@@ -221,30 +222,33 @@ def _area_selector(hass: HomeAssistant) -> selector.SelectSelector:
     )
 
 
-def room_schema(hass: HomeAssistant) -> vol.Schema:
-    return vol.Schema(
-        {
-            vol.Required(CONF_ROOM_NAME): selector.TextSelector(),
-            vol.Optional(CONF_AREA): _area_selector(hass),
-            vol.Optional(CONF_NEW_AREA): selector.TextSelector(),
-            vol.Required(CONF_TEMP_SENSOR): _entities("sensor", device_class="temperature"),
-            vol.Optional(CONF_TRVS, default=[]): _entities("climate", multiple=True),
-            vol.Optional(CONF_EXT_TEMP, default=[]): _entities("number", multiple=True),
-            vol.Optional(CONF_WINDOWS, default=[]): _entities(
-                ["binary_sensor", "input_boolean"], multiple=True
-            ),
-            vol.Required(CONF_WINDOW_OPEN_DELAY, default=DEFAULT_WINDOW_OPEN_DELAY): _seconds(),
-            vol.Required(CONF_WINDOW_CLOSE_DELAY, default=DEFAULT_WINDOW_CLOSE_DELAY): _seconds(),
-            vol.Required(CONF_ECO_TEMP, default=DEFAULT_ECO_TEMP): _temp(5, 30),
-            vol.Required(CONF_WARM_TEMP, default=DEFAULT_WARM_TEMP): _temp(5, 30),
-            vol.Required(CONF_BUFFER, default=DEFAULT_BUFFER): _temp(0, 3, 0.1),
-            vol.Required(CONF_MIN_TEMP, default=DEFAULT_MIN_TEMP): _temp(5, 30),
-            vol.Required(CONF_MAX_TEMP, default=DEFAULT_MAX_TEMP): _temp(5, 35),
-            vol.Required(CONF_STEP, default=str(DEFAULT_STEP)): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=["0.1", "0.5", "1.0"])
-            ),
-        }
-    )
+# Step 1: name, area choice and temperature settings
+ROOM_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_ROOM_NAME): selector.TextSelector(),
+        vol.Required(CONF_CREATE_AREA, default=False): selector.BooleanSelector(),
+        vol.Required(CONF_ECO_TEMP, default=DEFAULT_ECO_TEMP): _temp(5, 30),
+        vol.Required(CONF_WARM_TEMP, default=DEFAULT_WARM_TEMP): _temp(5, 30),
+        vol.Required(CONF_BUFFER, default=DEFAULT_BUFFER): _temp(0, 3, 0.1),
+        vol.Required(CONF_MIN_TEMP, default=DEFAULT_MIN_TEMP): _temp(5, 30),
+        vol.Required(CONF_MAX_TEMP, default=DEFAULT_MAX_TEMP): _temp(5, 35),
+        vol.Required(CONF_STEP, default=str(DEFAULT_STEP)): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=["0.1", "0.5", "1.0"])
+        ),
+    }
+)
+
+# Step 2: sensors and valves
+SENSORS_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_TEMP_SENSOR): _entities("sensor", device_class="temperature"),
+        vol.Optional(CONF_TRVS, default=[]): _entities("climate", multiple=True),
+        vol.Optional(CONF_EXT_TEMP, default=[]): _entities("number", multiple=True),
+        vol.Optional(CONF_WINDOWS, default=[]): _entities(["binary_sensor", "input_boolean"], multiple=True),
+        vol.Required(CONF_WINDOW_OPEN_DELAY, default=DEFAULT_WINDOW_OPEN_DELAY): _seconds(),
+        vol.Required(CONF_WINDOW_CLOSE_DELAY, default=DEFAULT_WINDOW_CLOSE_DELAY): _seconds(),
+    }
+)
 
 
 def validate_room(data: dict[str, Any]) -> dict[str, str]:
@@ -255,27 +259,24 @@ def validate_room(data: dict[str, Any]) -> dict[str, str]:
     for key in (CONF_ECO_TEMP, CONF_WARM_TEMP):
         if not low <= float(data[key]) <= high:
             errors[key] = "preset_out_of_range"
-    if data.get(CONF_AREA) and (data.get(CONF_NEW_AREA) or "").strip():
-        errors[CONF_NEW_AREA] = "area_and_new_area"
     return errors
 
 
-def _clean_room(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Normalise the form; create the room's area when asked (reused if the name exists)."""
-    data = dict(data)
-    data[CONF_STEP] = float(data[CONF_STEP])
-    new_area = (data.pop(CONF_NEW_AREA, None) or "").strip()
-    if new_area:
-        data[CONF_AREA] = ar.async_get(hass).async_get_or_create(new_area).id
-    if not data.get(CONF_AREA):
-        data.pop(CONF_AREA, None)
-    return data
-
-
 class RoomSubentryFlow(ConfigSubentryFlow):
-    """Add or edit a room."""
+    """Add or edit a room in three steps: room, sensors, area."""
 
-    def _name_taken(self, name: str, own_id: str | None = None) -> bool:
+    def __init__(self) -> None:
+        self._data: dict[str, Any] = {}
+        self._create_area = False
+        self._editing = False
+
+    @property
+    def _current(self) -> dict[str, Any]:
+        """Stored room data when editing, else empty."""
+        return dict(self._get_reconfigure_subentry().data) if self._editing else {}
+
+    def _name_taken(self, name: str) -> bool:
+        own_id = self._get_reconfigure_subentry().subentry_id if self._editing else None
         return any(
             sub.subentry_type == SUBENTRY_ROOM
             and sub.subentry_id != own_id
@@ -283,39 +284,76 @@ class RoomSubentryFlow(ConfigSubentryFlow):
             for sub in self._get_entry().subentries.values()
         )
 
+    # Step 1 -----------------------------------------------------------------
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            errors = validate_room(user_input)
-            if self._name_taken(user_input[CONF_ROOM_NAME]):
-                errors[CONF_ROOM_NAME] = "name_exists"
-            if not errors:
-                data = _clean_room(self.hass, user_input)
-                return self.async_create_entry(title=data[CONF_ROOM_NAME], data=data)
-        schema = room_schema(self.hass)
-        if user_input is not None:
-            schema = self.add_suggested_values_to_schema(schema, user_input)
-        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+        return await self._room_step("user", user_input)
 
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
-        subentry = self._get_reconfigure_subentry()
+        self._editing = True
+        return await self._room_step("reconfigure", user_input)
+
+    async def _room_step(self, step_id: str, user_input: dict[str, Any] | None) -> SubentryFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
+            user_input = {**user_input, CONF_ROOM_NAME: user_input[CONF_ROOM_NAME].strip()}
             errors = validate_room(user_input)
-            if self._name_taken(user_input[CONF_ROOM_NAME], subentry.subentry_id):
+            if not user_input[CONF_ROOM_NAME]:
+                errors[CONF_ROOM_NAME] = "name_required"
+            elif self._name_taken(user_input[CONF_ROOM_NAME]):
                 errors[CONF_ROOM_NAME] = "name_exists"
             if not errors:
-                data = _clean_room(self.hass, user_input)
-                return self.async_update_and_abort(
-                    self._get_entry(), subentry, title=data[CONF_ROOM_NAME], data=data
-                )
-        values = dict(user_input if user_input is not None else subentry.data)
-        values[CONF_STEP] = str(values.get(CONF_STEP, DEFAULT_STEP))
-        area_id = values.get(CONF_AREA)
-        if area_id and ar.async_get(self.hass).async_get_area(area_id) is None:
-            values.pop(CONF_AREA)  # area was deleted in HA
+                self._create_area = user_input.pop(CONF_CREATE_AREA)
+                user_input[CONF_STEP] = float(user_input[CONF_STEP])
+                self._data.update(user_input)
+                return await self.async_step_sensors()
+        values = user_input if user_input is not None else self._current
+        if values:
+            values = {**values, CONF_STEP: str(values.get(CONF_STEP, DEFAULT_STEP))}
         return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=self.add_suggested_values_to_schema(room_schema(self.hass), values),
+            step_id=step_id,
+            data_schema=self.add_suggested_values_to_schema(ROOM_SCHEMA, values),
             errors=errors,
+        )
+
+    # Step 2 -----------------------------------------------------------------
+    async def async_step_sensors(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        if user_input is not None:
+            self._data.update(user_input)
+            return await self.async_step_area()
+        return self.async_show_form(
+            step_id="sensors",
+            data_schema=self.add_suggested_values_to_schema(SENSORS_SCHEMA, self._current),
+            description_placeholders={"room": self._data[CONF_ROOM_NAME]},
+        )
+
+    # Step 3 -----------------------------------------------------------------
+    async def async_step_area(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        registry = ar.async_get(self.hass)
+        if user_input is not None:
+            if self._create_area:
+                name = (user_input.get(CONF_NEW_AREA) or "").strip()
+                area_id = registry.async_get_or_create(name).id if name else None
+            else:
+                area_id = user_input.get(CONF_AREA) or None
+            data = {k: v for k, v in self._data.items() if k != CONF_AREA}
+            if area_id:
+                data[CONF_AREA] = area_id
+            title = data[CONF_ROOM_NAME]
+            if self._editing:
+                return self.async_update_and_abort(
+                    self._get_entry(), self._get_reconfigure_subentry(), title=title, data=data
+                )
+            return self.async_create_entry(title=title, data=data)
+
+        if self._create_area:
+            schema = vol.Schema({vol.Optional(CONF_NEW_AREA): selector.TextSelector()})
+            suggested = {CONF_NEW_AREA: self._data[CONF_ROOM_NAME]}
+        else:
+            schema = vol.Schema({vol.Optional(CONF_AREA): _area_selector(self.hass)})
+            area_id = self._current.get(CONF_AREA)
+            suggested = {CONF_AREA: area_id} if area_id and registry.async_get_area(area_id) else {}
+        return self.async_show_form(
+            step_id="area",
+            data_schema=self.add_suggested_values_to_schema(schema, suggested),
+            description_placeholders={"room": self._data[CONF_ROOM_NAME]},
         )

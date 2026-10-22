@@ -114,24 +114,31 @@ def onboard(api: Api, username: str, password: str) -> None:
     print(f"Onboarding done, owner '{username}' created")
 
 
-def room_data(room: dict) -> dict:
+def room_steps(room: dict) -> list[dict]:
+    """The three room form steps: room and temperatures, sensors, area (none)."""
     key = slug(room["name"])
     count = room["trvs"]
-    return {
-        "name": room["name"],
-        "temperature_sensor": f"sensor.sim_{key}_temperature",
-        "trvs": [f"climate.sim_{key}_trv_{i}" for i in range(1, count + 1)],
-        "external_temperature_inputs": [f"number.sim_{key}_trv_{i}_external_temperature" for i in range(1, count + 1)],
-        "window_sensors": [room["window"]] if room["window"] else [],
-        "window_open_delay": 30,
-        "window_close_delay": 15,
-        "eco_temperature": 15.0,
-        "warm_temperature": room["warm"],
-        "overshoot_buffer": 1.0,
-        "min_temp": 5.0,
-        "max_temp": 25.0,
-        "target_temp_step": "0.5",
-    }
+    return [
+        {
+            "name": room["name"],
+            "create_area": False,
+            "eco_temperature": 15.0,
+            "warm_temperature": room["warm"],
+            "overshoot_buffer": 1.0,
+            "min_temp": 5.0,
+            "max_temp": 25.0,
+            "target_temp_step": "0.5",
+        },
+        {
+            "temperature_sensor": f"sensor.sim_{key}_temperature",
+            "trvs": [f"climate.sim_{key}_trv_{i}" for i in range(1, count + 1)],
+            "external_temperature_inputs": [f"number.sim_{key}_trv_{i}_external_temperature" for i in range(1, count + 1)],
+            "window_sensors": [room["window"]] if room["window"] else [],
+            "window_open_delay": 30,
+            "window_close_delay": 15,
+        },
+        {},
+    ]
 
 
 def create_heating(api: Api, source: str) -> None:
@@ -170,7 +177,8 @@ def create_heating(api: Api, source: str) -> None:
     sub = "/api/config/config_entries/subentries/flow"
     for room in ROOMS:
         start = api.call("POST", sub, {"handler": [entry_id, "room"]})
-        done = api.step(sub, start["flow_id"], room_data(room))
+        for step in room_steps(room):
+            done = api.step(sub, start["flow_id"], step)
         if done.get("type") != "create_entry":
             sys.exit(f"Room {room['name']} did not finish: {done}")
         print(f"  added room {room['name']} ({room['trvs']} TRVs)")
