@@ -80,6 +80,7 @@
           "data": {
             "name": "Room name",
             "area": "Area",
+            "new_area": "New area name",
             "temperature_sensor": "Room temperature sensor",
             "trvs": "Radiator valves (TRVs)",
             "external_temperature_inputs": "TRV external temperature inputs",
@@ -98,7 +99,8 @@
             "external_temperature_inputs": "Optional. Number entities that receive the room temperature (for example Sonoff TRVZB or Shelly BLU TRV).",
             "window_sensors": "Optional. Heating in this room pauses while any of them is open.",
             "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source.",
-            "area": "Optional. To make a new one, type its name and choose Add new area."
+            "area": "Optional. An existing area for this room.",
+            "new_area": "Optional. Creates an area with this name and puts the room in it (an existing area with the same name is reused). Leave Area empty when you use this."
           }
         },
         "reconfigure": {
@@ -106,6 +108,7 @@
           "data": {
             "name": "Room name",
             "area": "Area",
+            "new_area": "New area name",
             "temperature_sensor": "Room temperature sensor",
             "trvs": "Radiator valves (TRVs)",
             "external_temperature_inputs": "TRV external temperature inputs",
@@ -124,14 +127,16 @@
             "external_temperature_inputs": "Optional. Number entities that receive the room temperature (for example Sonoff TRVZB or Shelly BLU TRV).",
             "window_sensors": "Optional. Heating in this room pauses while any of them is open.",
             "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source.",
-            "area": "Optional. To make a new one, type its name and choose Add new area."
+            "area": "Optional. An existing area for this room.",
+            "new_area": "Optional. Creates an area with this name and puts the room in it (an existing area with the same name is reused). Leave Area empty when you use this."
           }
         }
       },
       "error": {
         "max_below_min": "Maximum must be higher than minimum.",
         "preset_out_of_range": "Must be between minimum and maximum.",
-        "name_exists": "A room with this name already exists."
+        "name_exists": "A room with this name already exists.",
+        "area_and_new_area": "Choose an existing area or type a new area name, not both."
       },
       "abort": {
         "reconfigure_successful": "Room updated."

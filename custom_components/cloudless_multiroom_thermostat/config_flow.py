@@ -15,8 +15,8 @@ from homeassistant.config_entries import (
     SubentryFlowResult,
 )
 from homeassistant.const import CONF_NAME
-from homeassistant.core import callback
-from homeassistant.helpers import selector
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import area_registry as ar, selector
 
 from .const import (
     AWAY_MODES,
@@ -32,6 +32,7 @@ from .const import (
     CONF_HYSTERESIS,
     CONF_MAX_TEMP,
     CONF_MIN_TEMP,
+    CONF_NEW_AREA,
     CONF_OFF_TEMP,
     CONF_PRESENCE,
     CONF_ROOM_NAME,
@@ -211,11 +212,21 @@ class SettingsOptionsFlow(OptionsFlow):
         )
 
 
-def room_schema() -> vol.Schema:
+def _area_selector(hass: HomeAssistant) -> selector.SelectSelector:
+    """Plain dropdown of existing areas (HA's area picker misbehaves inside this dialog)."""
+    areas = sorted(ar.async_get(hass).async_list_areas(), key=lambda a: a.name.casefold())
+    options = [selector.SelectOptionDict(value=a.id, label=a.name) for a in areas]
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN)
+    )
+
+
+def room_schema(hass: HomeAssistant) -> vol.Schema:
     return vol.Schema(
         {
             vol.Required(CONF_ROOM_NAME): selector.TextSelector(),
-            vol.Optional(CONF_AREA): selector.AreaSelector(),
+            vol.Optional(CONF_AREA): _area_selector(hass),
+            vol.Optional(CONF_NEW_AREA): selector.TextSelector(),
             vol.Required(CONF_TEMP_SENSOR): _entities("sensor", device_class="temperature"),
             vol.Optional(CONF_TRVS, default=[]): _entities("climate", multiple=True),
             vol.Optional(CONF_EXT_TEMP, default=[]): _entities("number", multiple=True),
@@ -244,12 +255,18 @@ def validate_room(data: dict[str, Any]) -> dict[str, str]:
     for key in (CONF_ECO_TEMP, CONF_WARM_TEMP):
         if not low <= float(data[key]) <= high:
             errors[key] = "preset_out_of_range"
+    if data.get(CONF_AREA) and (data.get(CONF_NEW_AREA) or "").strip():
+        errors[CONF_NEW_AREA] = "area_and_new_area"
     return errors
 
 
-def _clean_room(data: dict[str, Any]) -> dict[str, Any]:
+def _clean_room(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
+    """Normalise the form; create the room's area when asked (reused if the name exists)."""
     data = dict(data)
     data[CONF_STEP] = float(data[CONF_STEP])
+    new_area = (data.pop(CONF_NEW_AREA, None) or "").strip()
+    if new_area:
+        data[CONF_AREA] = ar.async_get(hass).async_get_or_create(new_area).id
     if not data.get(CONF_AREA):
         data.pop(CONF_AREA, None)
     return data
@@ -273,9 +290,9 @@ class RoomSubentryFlow(ConfigSubentryFlow):
             if self._name_taken(user_input[CONF_ROOM_NAME]):
                 errors[CONF_ROOM_NAME] = "name_exists"
             if not errors:
-                data = _clean_room(user_input)
+                data = _clean_room(self.hass, user_input)
                 return self.async_create_entry(title=data[CONF_ROOM_NAME], data=data)
-        schema = room_schema()
+        schema = room_schema(self.hass)
         if user_input is not None:
             schema = self.add_suggested_values_to_schema(schema, user_input)
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
@@ -288,14 +305,17 @@ class RoomSubentryFlow(ConfigSubentryFlow):
             if self._name_taken(user_input[CONF_ROOM_NAME], subentry.subentry_id):
                 errors[CONF_ROOM_NAME] = "name_exists"
             if not errors:
-                data = _clean_room(user_input)
+                data = _clean_room(self.hass, user_input)
                 return self.async_update_and_abort(
                     self._get_entry(), subentry, title=data[CONF_ROOM_NAME], data=data
                 )
         values = dict(user_input if user_input is not None else subentry.data)
         values[CONF_STEP] = str(values.get(CONF_STEP, DEFAULT_STEP))
+        area_id = values.get(CONF_AREA)
+        if area_id and ar.async_get(self.hass).async_get_area(area_id) is None:
+            values.pop(CONF_AREA)  # area was deleted in HA
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=self.add_suggested_values_to_schema(room_schema(), values),
+            data_schema=self.add_suggested_values_to_schema(room_schema(self.hass), values),
             errors=errors,
         )

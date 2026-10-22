@@ -389,3 +389,37 @@ async def test_editing_room_area_moves_device(hass: HomeAssistant, setup) -> Non
     await hass.async_block_till_done()
     device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, office.subentry_id)})
     assert device.area_id == study.id
+
+
+async def test_add_room_with_new_area_name(hass: HomeAssistant, setup) -> None:
+    from homeassistant.helpers import area_registry as ar, device_registry as dr
+
+    entry, _ = setup
+    areas = ar.async_get(hass)
+    kitchen = areas.async_create("Kitchen")
+    result = await hass.config_entries.subentries.async_init((entry.entry_id, "room"), context={"source": config_entries.SOURCE_USER})
+    assert {"area", "new_area"} <= {str(k) for k in result["data_schema"].schema}
+    room = {**OFFICE, "name": "Guest Room", "trvs": [], "target_temp_step": "0.5"}
+
+    both = await hass.config_entries.subentries.async_configure(result["flow_id"], {**room, "area": kitchen.id, "new_area": "test"})
+    assert both["errors"] == {"new_area": "area_and_new_area"}
+    done = await hass.config_entries.subentries.async_configure(result["flow_id"], {**room, "new_area": " test "})
+    assert done["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+
+    area = areas.async_get_area_by_name("test")
+    sub = next(s for s in entry.subentries.values() if s.title == "Guest Room")
+    assert area is not None and sub.data["area"] == area.id and "new_area" not in sub.data
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, sub.subentry_id)})
+    assert device.area_id == area.id
+
+
+async def test_area_dropdown_lists_existing_areas(hass: HomeAssistant, setup) -> None:
+    from homeassistant.helpers import area_registry as ar
+
+    entry, _ = setup
+    ar.async_get(hass).async_create("Zolder")
+    result = await hass.config_entries.subentries.async_init((entry.entry_id, "room"), context={"source": config_entries.SOURCE_USER})
+    area_field = next(v for k, v in result["data_schema"].schema.items() if str(k) == "area")
+    labels = [o["label"] for o in area_field.config["options"]]
+    assert "Zolder" in labels
