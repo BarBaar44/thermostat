@@ -31,6 +31,7 @@ AWAY_MODES: Final = [AWAY_OFF, AWAY_ECO]
 # Room (subentry) keys
 CONF_ROOM_NAME: Final = "name"
 CONF_AREA: Final = "area"
+CONF_CREATE_AREA: Final = "create_area"  # form only, never stored
 CONF_TEMP_SENSOR: Final = "temperature_sensor"
 CONF_TRVS: Final = "trvs"
 CONF_EXT_TEMP: Final = "external_temperature_inputs"
