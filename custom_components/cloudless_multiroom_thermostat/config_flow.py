@@ -15,8 +15,8 @@ from homeassistant.config_entries import (
     SubentryFlowResult,
 )
 from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import area_registry as ar, selector
+from homeassistant.core import callback
+from homeassistant.helpers import selector
 
 from .const import (
     AWAY_MODES,
@@ -24,7 +24,6 @@ from .const import (
     CONF_AWAY_MODE,
     CONF_BUFFER,
     CONF_CH_SWITCH,
-    CONF_CREATE_AREA,
     CONF_ECO_TEMP,
     CONF_EXT_TEMP,
     CONF_HEARTBEAT_MIN,
@@ -217,7 +216,6 @@ def room_schema() -> vol.Schema:
         {
             vol.Required(CONF_ROOM_NAME): selector.TextSelector(),
             vol.Optional(CONF_AREA): selector.AreaSelector(),
-            vol.Optional(CONF_CREATE_AREA, default=False): selector.BooleanSelector(),
             vol.Required(CONF_TEMP_SENSOR): _entities("sensor", device_class="temperature"),
             vol.Optional(CONF_TRVS, default=[]): _entities("climate", multiple=True),
             vol.Optional(CONF_EXT_TEMP, default=[]): _entities("number", multiple=True),
@@ -246,17 +244,12 @@ def validate_room(data: dict[str, Any]) -> dict[str, str]:
     for key in (CONF_ECO_TEMP, CONF_WARM_TEMP):
         if not low <= float(data[key]) <= high:
             errors[key] = "preset_out_of_range"
-    if data.get(CONF_CREATE_AREA) and data.get(CONF_AREA):
-        errors[CONF_AREA] = "area_and_create"
     return errors
 
 
-def _clean_room(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Normalise the form and create the room's area when asked (reused if the name exists)."""
+def _clean_room(data: dict[str, Any]) -> dict[str, Any]:
     data = dict(data)
     data[CONF_STEP] = float(data[CONF_STEP])
-    if data.pop(CONF_CREATE_AREA, False):
-        data[CONF_AREA] = ar.async_get(hass).async_get_or_create(data[CONF_ROOM_NAME]).id
     if not data.get(CONF_AREA):
         data.pop(CONF_AREA, None)
     return data
@@ -280,7 +273,7 @@ class RoomSubentryFlow(ConfigSubentryFlow):
             if self._name_taken(user_input[CONF_ROOM_NAME]):
                 errors[CONF_ROOM_NAME] = "name_exists"
             if not errors:
-                data = _clean_room(self.hass, user_input)
+                data = _clean_room(user_input)
                 return self.async_create_entry(title=data[CONF_ROOM_NAME], data=data)
         schema = room_schema()
         if user_input is not None:
@@ -295,7 +288,7 @@ class RoomSubentryFlow(ConfigSubentryFlow):
             if self._name_taken(user_input[CONF_ROOM_NAME], subentry.subentry_id):
                 errors[CONF_ROOM_NAME] = "name_exists"
             if not errors:
-                data = _clean_room(self.hass, user_input)
+                data = _clean_room(user_input)
                 return self.async_update_and_abort(
                     self._get_entry(), subentry, title=data[CONF_ROOM_NAME], data=data
                 )

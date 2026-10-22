@@ -375,30 +375,6 @@ async def test_fresh_external_input_without_value_gets_written(hass: HomeAssista
         assert calls.last("number.trv_living_ext") == ("set_value", {"entity_id": "number.trv_living_ext", "value": 18.0})
 
 
-async def test_add_room_can_create_its_area(hass: HomeAssistant, setup) -> None:
-    from homeassistant.helpers import area_registry as ar, device_registry as dr
-
-    entry, _ = setup
-    room = {**OFFICE, "name": "Guest Room", "trvs": [], "target_temp_step": "0.5", "create_area": True}
-    result = await hass.config_entries.subentries.async_init((entry.entry_id, "room"), context={"source": config_entries.SOURCE_USER})
-    assert "create_area" in [str(k) for k in result["data_schema"].schema]
-
-    areas = ar.async_get(hass)
-    other = areas.async_create("Kitchen")
-    bad = await hass.config_entries.subentries.async_configure(result["flow_id"], {**room, "area": other.id})
-    assert bad["errors"] == {"area": "area_and_create"}
-    done = await hass.config_entries.subentries.async_configure(result["flow_id"], room)
-    assert done["type"] is FlowResultType.CREATE_ENTRY
-    await hass.async_block_till_done()
-
-    area = areas.async_get_area_by_name("Guest Room")
-    assert area is not None
-    sub = next(s for s in entry.subentries.values() if s.title == "Guest Room")
-    assert sub.data["area"] == area.id and "create_area" not in sub.data
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, sub.subentry_id)})
-    assert device.area_id == area.id
-
-
 async def test_editing_room_area_moves_device(hass: HomeAssistant, setup) -> None:
     from homeassistant.helpers import area_registry as ar, device_registry as dr
 
