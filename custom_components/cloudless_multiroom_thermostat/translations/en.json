@@ -65,9 +65,8 @@
           "away_mode": "Rooms that are set to heat go off, or are lowered to their eco temperature.",
           "skip_unchanged_writes": "Saves TRV batteries. When off, the heartbeat also resends every TRV target.",
           "external_temp_heartbeat": "How often room temperatures are resent to TRV external inputs, even when unchanged (Sonoff TRVZB falls back to its own sensor after 2 hours).",
-          "experimental": "Observe-only diagnostics: warm-up and PID advice, night cooldown prediction, gas per degree-day and an evening report. They never change the heating. On: the next page asks for the entities they use."
-        },
-        "description": "Experimental features are explained here, with how mature each one is: [Experimental features]({docs_url})"
+          "experimental": "Observe-only diagnostics: warm-up and PID advice, night cooldown prediction, gas per degree-day and an evening report. They never change the heating. On: the next page asks for the entities they use. What each feature does and how mature it is: [Experimental features]({docs_url})"
+        }
       },
       "experimental": {
         "title": "Experimental features",
