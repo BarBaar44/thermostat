@@ -1,0 +1,15 @@
+# Test Home Assistant with the simulator and the integration from this repo.
+#   cd dev && docker compose up -d   ->  http://localhost:8124
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: cmt-test-ha
+    restart: unless-stopped
+    ports:
+      - "8124:8123"
+    environment:
+      - TZ=Europe/Amsterdam
+    volumes:
+      - ./config:/config
+      # The integration under test, live from the repo (restart HA after edits)
+      - ../custom_components/cloudless_multiroom_thermostat:/config/custom_components/cloudless_multiroom_thermostat:ro
