@@ -58,6 +58,39 @@ DEFAULT_STEP: Final = 0.5
 DEFAULT_ECO_TEMP: Final = 15.0
 DEFAULT_WARM_TEMP: Final = 19.0
 
+# Experimental features (options)
+CONF_EXPERIMENTAL: Final = "experimental"
+CONF_EXP_ROOM: Final = "exp_room"  # subentry id of the room the night model follows
+CONF_EXP_COMFORT_WEEKDAY: Final = "exp_comfort_weekday"
+CONF_EXP_COMFORT_WEEKEND: Final = "exp_comfort_weekend"
+CONF_EXP_OUTDOOR: Final = "exp_outdoor"
+CONF_EXP_WEATHER: Final = "exp_weather"
+CONF_EXP_GAS: Final = "exp_gas"
+CONF_EXP_FLAME: Final = "exp_flame"
+CONF_EXP_DHW: Final = "exp_dhw"
+CONF_EXP_CH_ACTIVE: Final = "exp_ch_active"
+CONF_EXP_WATER: Final = "exp_water"
+CONF_EXP_RETURN: Final = "exp_return"
+CONF_EXP_PEOPLE: Final = "exp_people"
+CONF_EXP_KP: Final = "exp_kp"
+CONF_EXP_KI: Final = "exp_ki"
+CONF_EXP_KD: Final = "exp_kd"
+CONF_EXP_INTEGRAL: Final = "exp_integral"
+CONF_EXP_GAS_BEFORE6: Final = "exp_gas_price_before6"
+CONF_EXP_GAS_AFTER6: Final = "exp_gas_price_after6"
+EXP_ENTITY_KEYS: Final = (
+    CONF_EXP_OUTDOOR, CONF_EXP_WEATHER, CONF_EXP_GAS, CONF_EXP_FLAME, CONF_EXP_DHW,
+    CONF_EXP_CH_ACTIVE, CONF_EXP_WATER, CONF_EXP_RETURN, CONF_EXP_PEOPLE, CONF_EXP_KP,
+    CONF_EXP_KI, CONF_EXP_KD, CONF_EXP_INTEGRAL, CONF_EXP_GAS_BEFORE6, CONF_EXP_GAS_AFTER6,
+)
+DEFAULT_COMFORT_WEEKDAY: Final = "07:30:00"
+DEFAULT_COMFORT_WEEKEND: Final = "08:00:00"
+EXP_SUMMARY_HOUR: Final = 21  # fixed: the night model measures the evening drop from 21:00
+SERVICE_EXPERIMENTAL_REPORT: Final = "experimental_report"
+DOCS_EXPERIMENTAL_URL: Final = (
+    "https://github.com/BarBaar44/thermostat/blob/main/docs/experimental.md"
+)
+
 # Presets
 PRESET_ECO: Final = "eco"
 PRESET_WARM: Final = "warm"

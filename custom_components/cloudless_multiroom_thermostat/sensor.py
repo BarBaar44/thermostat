@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.const import EntityCategory, UnitOfTemperature
@@ -33,6 +35,10 @@ async def async_setup_entry(
             LegacyDeltaSensor(controller),
         ]
     )
+    if controller.experimental is not None:
+        async_add_entities(
+            [ExperimentalSensor(controller, desc) for desc in EXPERIMENTAL_SENSORS]
+        )
 
 
 class _SystemSensor(SensorEntity):
@@ -114,3 +120,73 @@ class LegacyDeltaSensor(_SystemSensor):
     @property
     def native_value(self) -> str:
         return self._controller.legacy_json()
+
+
+@dataclass(frozen=True, kw_only=True)
+class ExperimentalSensorDescription(SensorEntityDescription):
+    """Experimental sensor: value comes from the runner's values[key]."""
+
+
+EXPERIMENTAL_SENSORS: tuple[ExperimentalSensorDescription, ...] = (
+    ExperimentalSensorDescription(
+        key="gas_per_degree_day",
+        translation_key="exp_gas_per_degree_day",
+        native_unit_of_measurement="m³/°Cd",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+        icon="mdi:fire",
+    ),
+    ExperimentalSensorDescription(
+        key="night_prediction",
+        translation_key="exp_night_prediction",
+        icon="mdi:weather-night",
+    ),
+    ExperimentalSensorDescription(
+        key="last_overshoot",
+        translation_key="exp_last_overshoot",
+        # A difference, not a temperature: no temperature device class
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        suggested_display_precision=2,
+        icon="mdi:thermometer-chevron-up",
+    ),
+    ExperimentalSensorDescription(
+        key="recommendation",
+        translation_key="exp_recommendation",
+        icon="mdi:tune-variant",
+    ),
+)
+
+
+class ExperimentalSensor(SensorEntity):
+    """Observe-only output of the experimental features."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    entity_description: ExperimentalSensorDescription
+
+    def __init__(self, controller: HeatingController, description: ExperimentalSensorDescription) -> None:
+        self._controller = controller
+        self.entity_description = description
+        self._attr_unique_id = f"{controller.entry.entry_id}_exp_{description.key}"
+        self._attr_device_info = system_device_info(controller)
+
+    async def async_added_to_hass(self) -> None:
+        from .experimental.runner import signal_experimental  # noqa: PLC0415
+
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, signal_experimental(self._controller.entry.entry_id), self.async_write_ha_state
+            )
+        )
+
+    @property
+    def _value(self) -> tuple[Any, dict[str, Any]]:
+        return self._controller.experimental.values.get(self.entity_description.key, (None, {}))
+
+    @property
+    def native_value(self) -> Any:
+        return self._value[0]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {**self._value[1], "experimental": True}

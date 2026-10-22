@@ -53,7 +53,8 @@
           "presence_entity": "Presence",
           "away_mode": "When everybody is away",
           "skip_unchanged_writes": "Skip unchanged TRV writes",
-          "external_temp_heartbeat": "Heartbeat"
+          "external_temp_heartbeat": "Heartbeat",
+          "experimental": "Enable experimental features"
         },
         "data_description": {
           "heat_source_entity": "Switch: the boiler relay. Climate: the ESPHome / DIYLess thermostat climate entity. OTGW: the OpenTherm Gateway climate entity. It receives the winning room target.",
@@ -63,7 +64,45 @@
           "presence_entity": "Optional. home / on means somebody is home. Unknown counts as home.",
           "away_mode": "Rooms that are set to heat go off, or are lowered to their eco temperature.",
           "skip_unchanged_writes": "Saves TRV batteries. When off, the heartbeat also resends every TRV target.",
-          "external_temp_heartbeat": "How often room temperatures are resent to TRV external inputs, even when unchanged (Sonoff TRVZB falls back to its own sensor after 2 hours)."
+          "external_temp_heartbeat": "How often room temperatures are resent to TRV external inputs, even when unchanged (Sonoff TRVZB falls back to its own sensor after 2 hours).",
+          "experimental": "Observe-only diagnostics: warm-up and PID advice, night cooldown prediction, gas per degree-day and an evening report. They never change the heating. On: the next page asks for the entities they use."
+        },
+        "description": "Experimental features are explained here, with how mature each one is: [Experimental features]({docs_url})"
+      },
+      "experimental": {
+        "title": "Experimental features",
+        "description": "All observe only: nothing here changes the heating. Every entity is optional; a feature runs once the entities it needs are set. What each feature does, what it needs and how mature it is: [Experimental features]({docs_url})",
+        "data": {
+          "exp_room": "Room to follow",
+          "exp_comfort_weekday": "Comfort time on weekdays",
+          "exp_comfort_weekend": "Comfort time at weekends",
+          "exp_outdoor": "Outdoor temperature",
+          "exp_weather": "Weather forecast",
+          "exp_people": "People at home",
+          "exp_gas": "Gas meter",
+          "exp_flame": "Burner flame",
+          "exp_dhw": "Hot water active",
+          "exp_ch_active": "Central heating active",
+          "exp_water": "Flow water temperature",
+          "exp_return": "Return water temperature",
+          "exp_kp": "PID Kp",
+          "exp_ki": "PID Ki",
+          "exp_kd": "PID Kd",
+          "exp_integral": "PID integral",
+          "exp_gas_price_before6": "Gas price tomorrow before 06:00",
+          "exp_gas_price_after6": "Gas price tomorrow after 06:00"
+        },
+        "data_description": {
+          "exp_room": "Warm-up advice and the night model follow this room. Its warm temperature is the morning target.",
+          "exp_comfort_weekday": "When the room should be warm in the morning; the night prediction says when heating would have to start.",
+          "exp_outdoor": "Needed for gas per degree-day and the night model.",
+          "exp_weather": "Hourly forecast for the night prediction.",
+          "exp_people": "zone.home or a count sensor. Days nobody was home are left out of the gas figures.",
+          "exp_gas": "Total gas meter (m³), with long-term statistics.",
+          "exp_flame": "With hot water active and central heating active: splits each day's gas into hot water and heating.",
+          "exp_kp": "Kp, Ki and Kd of a firmware PID (for example ESPHome). With all three set, warm-ups get tuning advice.",
+          "exp_integral": "Optional PID integral sensor (ESPHome reports it x100).",
+          "exp_gas_price_before6": "Optional, shown next to the night prediction (for example Frank Energie)."
         }
       }
     }
@@ -174,6 +213,18 @@
       },
       "legacy_delta": {
         "name": "Delta temperature (legacy)"
+      },
+      "exp_gas_per_degree_day": {
+        "name": "Heating gas per degree-day"
+      },
+      "exp_night_prediction": {
+        "name": "Night prediction"
+      },
+      "exp_last_overshoot": {
+        "name": "Last warm-up overshoot"
+      },
+      "exp_recommendation": {
+        "name": "PID advice"
       }
     },
     "binary_sensor": {
@@ -201,6 +252,16 @@
         "config_entry_id": {
           "name": "Heating system",
           "description": "Optional. Only rooms of this heating system."
+        }
+      }
+    },
+    "experimental_report": {
+      "name": "Experimental report",
+      "description": "Post the experimental report now (it is also posted every evening at 21:00).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Heating system",
+          "description": "Optional. Only this heating system."
         }
       }
     }

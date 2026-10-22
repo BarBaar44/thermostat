@@ -13,7 +13,9 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     if discovery_info is None:
         return
     sim: HeatingSim = hass.data[DOMAIN]
-    async_add_entities([RoomTemperature(room) for room in sim.rooms] + [OutdoorTemperature(sim)])
+    async_add_entities(
+        [RoomTemperature(room) for room in sim.rooms] + [OutdoorTemperature(sim), GasMeter(sim)]
+    )
 
 
 class _Temp(SimEntity, SensorEntity):
@@ -44,3 +46,21 @@ class OutdoorTemperature(_Temp):
     @property
     def native_value(self) -> float:
         return self._sim.outdoor
+
+
+class GasMeter(SimEntity, SensorEntity):
+    """Total gas meter, like a P1 meter: grows while the burner runs."""
+
+    _attr_name = "Sim gas meter"
+    _attr_unique_id = "heating_sim_gas"
+    _attr_device_class = SensorDeviceClass.GAS
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = "m³"
+    _attr_suggested_display_precision = 3
+
+    def __init__(self, sim: HeatingSim) -> None:
+        self._sim = sim
+
+    @property
+    def native_value(self) -> float:
+        return round(self._sim.gas_m3, 3)

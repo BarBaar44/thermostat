@@ -363,6 +363,8 @@ Rule 0 is a defense-in-depth fix for this class of bug: it stops any stuck/overs
 
 # Experimental: self-tuning heating and night cooldown profiling
 
+> **Moving into the integration:** these features are now built into Cloudless Multiroom Thermostat as optional experimental features. See [docs/experimental.md](docs/experimental.md) for what each one does and how mature it is. The pyscript version below keeps running until the switch-over.
+
 > **Status: experimental, observe only.** Everything in this section records data and says what it *would* do - nothing here changes the heating yet. The code is in [`pyscript/`](pyscript/): a [pyscript](https://github.com/custom-components/pyscript) app ([`apps/heating_tuner.py`](pyscript/apps/heating_tuner.py), the Home Assistant glue) with the logic in plain-Python modules that have no Home Assistant dependencies ([`modules/heating_tuner_core.py`](pyscript/modules/heating_tuner_core.py) for warm-ups, [`modules/heating_night_core.py`](pyscript/modules/heating_night_core.py) for nights, [`modules/heating_gas_core.py`](pyscript/modules/heating_gas_core.py) for gas per degree-day, [`modules/heating_tuner_store.py`](pyscript/modules/heating_tuner_store.py) for file storage).
 
 The PID values and the schedule above were tuned by hand, once. The goal is for Home Assistant to keep re-evaluating them from how the house actually behaves, in four phases:

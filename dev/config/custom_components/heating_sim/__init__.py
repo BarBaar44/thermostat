@@ -31,7 +31,17 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "heating_sim"
 SIGNAL = f"{DOMAIN}_tick"
-PLATFORMS = [Platform.SENSOR, Platform.CLIMATE, Platform.NUMBER, Platform.SWITCH]
+PLATFORMS = [
+    Platform.SENSOR,
+    Platform.CLIMATE,
+    Platform.NUMBER,
+    Platform.SWITCH,
+    Platform.BINARY_SENSOR,
+    Platform.WEATHER,
+]
+# Gas use in m³ per real hour (not sim time: recorder statistics run on real time)
+GAS_CH_PER_HOUR = 1.1
+GAS_DHW_PER_HOUR = 1.15  # 0.019 m³ per burner minute, the rate the gas split assumes
 
 ROOM_SCHEMA = vol.Schema(
     {
@@ -58,6 +68,8 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional("boiler_on_above", default=12.0): vol.Coerce(float),
                 # Extra loss per sim hour while a window is open
                 vol.Optional("window_loss_rate", default=0.6): vol.Coerce(float),
+                # Toggle this to simulate a shower: the burner runs for hot water
+                vol.Optional("hot_water", default=None): vol.Any(None, cv.entity_id),
                 vol.Required("rooms"): vol.All(cv.ensure_list, [ROOM_SCHEMA]),
             }
         )
@@ -120,6 +132,7 @@ class HeatingSim:
         self.boiler_target = 10.0
         self.relay_on = False
         self.ch_enabled = True
+        self.gas_m3 = 1000.0
         self.rooms: list[SimRoom] = []
         for rc in conf["rooms"]:
             room = SimRoom(rc["name"], rc["start_temperature"], rc["heat_rate"], rc["loss_rate"], rc["window"])
@@ -133,6 +146,16 @@ class HeatingSim:
             return True
         return self.ch_enabled and self.boiler_on and self.boiler_target > self.conf["boiler_on_above"]
 
+    @property
+    def hot_water(self) -> bool:
+        entity_id = self.conf.get("hot_water")
+        state = self.hass.states.get(entity_id) if entity_id else None
+        return state is not None and state.state == "on"
+
+    @property
+    def flame(self) -> bool:
+        return self.firing or self.hot_water
+
     def window_open(self, room: SimRoom) -> bool:
         if not room.window:
             return False
@@ -142,9 +165,15 @@ class HeatingSim:
     @callback
     def tick(self, _now: Any = None) -> None:
         now = time.monotonic()
-        sim_hours = (now - self._last) * self.conf["speed"] / 3600
+        real_hours = (now - self._last) / 3600
+        sim_hours = real_hours * self.conf["speed"]
         self._last = now
         firing = self.firing
+        if self.hot_water:  # hot water has priority on a combi boiler
+            self.gas_m3 += GAS_DHW_PER_HOUR * real_hours
+            firing = False
+        elif firing:
+            self.gas_m3 += GAS_CH_PER_HOUR * real_hours
         for room in self.rooms:
             gap = room.temperature - self.outdoor
             loss = room.loss_rate + (self.conf["window_loss_rate"] if self.window_open(room) else 0)

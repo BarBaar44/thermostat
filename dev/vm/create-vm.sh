@@ -112,7 +112,7 @@ sudo qemu-img create -q -f qcow2 -F qcow2 -b "$BASE_IMG" "$DISK" "${DISK_GB}G"
 
 SETUP_CMD="echo 'Skipping heating setup (--no-setup)'"
 if [[ $SETUP -eq 1 ]]; then
-  SETUP_CMD="python3 /opt/thermostat/dev/setup_heating.py --onboard --wait 1200 --username '$USERNAME' --password '$PASSWORD'"
+  SETUP_CMD="python3 /opt/thermostat/dev/setup_heating.py --onboard --wait 1200 --experimental --username '$USERNAME' --password '$PASSWORD'"
 fi
 
 TMP=$(mktemp -d)

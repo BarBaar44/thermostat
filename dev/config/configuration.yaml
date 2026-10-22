@@ -25,6 +25,9 @@ input_boolean:
   sim_guest_room_window:
     name: Sim Guest Room window
     icon: mdi:window-closed-variant
+  sim_hot_water:
+    name: Sim hot water (shower)
+    icon: mdi:shower-head
   sim_somebody_home:
     name: Sim somebody home
     icon: mdi:home-account
@@ -35,6 +38,7 @@ heating_sim:
   speed: 30          # 30 sim seconds per real second: one hour in two minutes
   tick_seconds: 5
   boiler_on_above: 12
+  hot_water: input_boolean.sim_hot_water
   rooms:
     - name: Living Room
       start_temperature: 17.5

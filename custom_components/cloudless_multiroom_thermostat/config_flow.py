@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -24,6 +23,25 @@ from .const import (
     CONF_BUFFER,
     CONF_CH_SWITCH,
     CONF_ECO_TEMP,
+    CONF_EXP_CH_ACTIVE,
+    CONF_EXP_COMFORT_WEEKDAY,
+    CONF_EXP_COMFORT_WEEKEND,
+    CONF_EXP_DHW,
+    CONF_EXP_FLAME,
+    CONF_EXP_GAS,
+    CONF_EXP_GAS_AFTER6,
+    CONF_EXP_GAS_BEFORE6,
+    CONF_EXP_INTEGRAL,
+    CONF_EXP_KD,
+    CONF_EXP_KI,
+    CONF_EXP_KP,
+    CONF_EXP_OUTDOOR,
+    CONF_EXP_PEOPLE,
+    CONF_EXP_RETURN,
+    CONF_EXP_ROOM,
+    CONF_EXP_WATER,
+    CONF_EXP_WEATHER,
+    CONF_EXPERIMENTAL,
     CONF_EXT_TEMP,
     CONF_HEARTBEAT_MIN,
     CONF_HEAT_SOURCE_ENTITY,
@@ -44,6 +62,8 @@ from .const import (
     CONF_WINDOWS,
     DEFAULT_AWAY_MODE,
     DEFAULT_BUFFER,
+    DEFAULT_COMFORT_WEEKDAY,
+    DEFAULT_COMFORT_WEEKEND,
     DEFAULT_ECO_TEMP,
     DEFAULT_HEARTBEAT_MIN,
     DEFAULT_HYSTERESIS,
@@ -55,7 +75,9 @@ from .const import (
     DEFAULT_WARM_TEMP,
     DEFAULT_WINDOW_CLOSE_DELAY,
     DEFAULT_WINDOW_OPEN_DELAY,
+    DOCS_EXPERIMENTAL_URL,
     DOMAIN,
+    EXP_ENTITY_KEYS,
     HEAT_SOURCE_CLIMATE,
     HEAT_SOURCE_OTGW,
     HEAT_SOURCE_SWITCH,
@@ -187,26 +209,102 @@ class CloudlessMultiroomThermostatFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="settings", data_schema=SETTINGS_SCHEMA)
 
 
+def experimental_schema(rooms: dict[str, str]) -> vol.Schema:
+    """Entities for the experimental features; everything optional."""
+    room_options = [selector.SelectOptionDict(value=k, label=v) for k, v in rooms.items()]
+    fields: dict[Any, Any] = {}
+    if room_options:
+        fields[vol.Required(CONF_EXP_ROOM, default=room_options[0]["value"])] = selector.SelectSelector(
+            selector.SelectSelectorConfig(options=room_options, mode=selector.SelectSelectorMode.DROPDOWN)
+        )
+    fields.update(
+        {
+            vol.Required(CONF_EXP_COMFORT_WEEKDAY, default=DEFAULT_COMFORT_WEEKDAY): selector.TimeSelector(),
+            vol.Required(CONF_EXP_COMFORT_WEEKEND, default=DEFAULT_COMFORT_WEEKEND): selector.TimeSelector(),
+            vol.Optional(CONF_EXP_OUTDOOR): _entities("sensor", device_class="temperature"),
+            vol.Optional(CONF_EXP_WEATHER): _entities("weather"),
+            vol.Optional(CONF_EXP_PEOPLE): _entities(["zone", "sensor"]),
+            vol.Optional(CONF_EXP_GAS): _entities("sensor"),
+            vol.Optional(CONF_EXP_FLAME): _entities("binary_sensor"),
+            vol.Optional(CONF_EXP_DHW): _entities("binary_sensor"),
+            vol.Optional(CONF_EXP_CH_ACTIVE): _entities("binary_sensor"),
+            vol.Optional(CONF_EXP_WATER): _entities("sensor"),
+            vol.Optional(CONF_EXP_RETURN): _entities("sensor"),
+            vol.Optional(CONF_EXP_KP): _entities(["number", "input_number"]),
+            vol.Optional(CONF_EXP_KI): _entities(["number", "input_number"]),
+            vol.Optional(CONF_EXP_KD): _entities(["number", "input_number"]),
+            vol.Optional(CONF_EXP_INTEGRAL): _entities("sensor"),
+            vol.Optional(CONF_EXP_GAS_BEFORE6): _entities("sensor"),
+            vol.Optional(CONF_EXP_GAS_AFTER6): _entities("sensor"),
+        }
+    )
+    return vol.Schema(fields)
+
+
 class SettingsOptionsFlow(OptionsFlow):
     """Edit heat source entities and system settings (not the source type)."""
 
+    def __init__(self) -> None:
+        self._options: dict[str, Any] = {}
+
+    @property
+    def _current(self) -> dict[str, Any]:
+        return {**self.config_entry.data, **self.config_entry.options}
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        current = {**self.config_entry.data, **self.config_entry.options}
+        current = self._current
         source_type = current[CONF_HEAT_SOURCE_TYPE]
         schema = vol.Schema(
-            {**heat_source_schema(source_type).schema, **SETTINGS_SCHEMA.schema}
+            {
+                **heat_source_schema(source_type).schema,
+                **SETTINGS_SCHEMA.schema,
+                vol.Required(CONF_EXPERIMENTAL, default=False): selector.BooleanSelector(),
+            }
         )
         if user_input is not None:
             # Optional fields left empty must be removed, not kept from data
             options = {k: v for k, v in user_input.items() if v not in (None, "")}
             for key in (CONF_CH_SWITCH, CONF_PRESENCE):
                 options.setdefault(key, None)
+            # Keep the experimental settings while switched off, so switching
+            # back on remembers them
+            for key in (CONF_EXP_ROOM, CONF_EXP_COMFORT_WEEKDAY, CONF_EXP_COMFORT_WEEKEND, *EXP_ENTITY_KEYS):
+                if key in current:
+                    options[key] = current[key]
+            self._options = options
+            if options[CONF_EXPERIMENTAL]:
+                return await self.async_step_experimental()
             return self.async_create_entry(data=options)
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
                 schema, {k: v for k, v in current.items() if v is not None}
             ),
+            description_placeholders={"docs_url": DOCS_EXPERIMENTAL_URL},
+        )
+
+    async def async_step_experimental(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        rooms = {
+            sub.subentry_id: sub.title
+            for sub in self.config_entry.subentries.values()
+            if sub.subentry_type == SUBENTRY_ROOM
+        }
+        if user_input is not None:
+            data = {**self._options, **user_input}
+            for key in EXP_ENTITY_KEYS:  # cleared fields really clear
+                if not user_input.get(key):
+                    data[key] = None
+            return self.async_create_entry(data=data)
+        current = self._current
+        suggested = {k: v for k, v in current.items() if v is not None}
+        if CONF_EXP_PEOPLE not in current and self.hass.states.get("zone.home"):
+            suggested[CONF_EXP_PEOPLE] = "zone.home"
+        if suggested.get(CONF_EXP_ROOM) not in rooms:
+            suggested.pop(CONF_EXP_ROOM, None)
+        return self.async_show_form(
+            step_id="experimental",
+            data_schema=self.add_suggested_values_to_schema(experimental_schema(rooms), suggested),
+            description_placeholders={"docs_url": DOCS_EXPERIMENTAL_URL},
         )
 
 

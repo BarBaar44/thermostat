@@ -14,6 +14,10 @@ Nothing here controls real hardware. The `heating_sim` integration fakes everyth
 | Central heating enable | `switch.sim_ch_enabled` |
 | Outdoor temperature | `sensor.sim_outdoor_temperature` |
 | Windows and presence (toggle these yourself) | `input_boolean.sim_living_room_garden_door`, `input_boolean.sim_master_bedroom_window`, `input_boolean.sim_somebody_home` |
+| Boiler signals for the experimental features | `binary_sensor.sim_boiler_flame`, `binary_sensor.sim_central_heating_active`, `binary_sensor.sim_hot_water_active` |
+| Gas meter (m³, grows in real time while the burner runs) | `sensor.sim_gas_meter` |
+| Weather with an hourly forecast | `weather.sim_weather` |
+| Hot water / shower (toggle it yourself) | `input_boolean.sim_hot_water` |
 
 Rooms: Living Room (3 TRVs, garden door), Office, Sports Room, Master Bedroom (2 TRVs, window) and Attic (no TRVs, only adds demand). These five are added to the heating system by `setup_heating.py`.
 
@@ -45,7 +49,7 @@ The integration is mounted read only from `../custom_components/`, so after chan
 
 ### Option 2: VM in Virtual Machine Manager (Fedora)
 
-`vm/create-vm.sh` builds a Debian 13 VM on your machine and lets cloud-init do the rest: it installs Docker, clones this repo, starts the same test HA and, unless you pass `--no-setup`, does onboarding and creates the heating system with all rooms. The VM shows up in Virtual Machine Manager like any other.
+`vm/create-vm.sh` builds a Debian 13 VM on your machine and lets cloud-init do the rest: it installs Docker, clones this repo, starts the same test HA and, unless you pass `--no-setup`, does onboarding, creates the heating system with all rooms and switches on the experimental features. The VM shows up in Virtual Machine Manager like any other.
 
 ```bash
 sudo dnf install virt-install qemu-img   # once, if not installed yet
@@ -87,6 +91,7 @@ It creates "Sim heating" with all five rooms, presence `input_boolean.sim_somebo
 - Turn on `input_boolean.sim_living_room_garden_door`: after 30 s the living room pauses (`binary_sensor.living_room_paused`), its TRVs go to 10 °C; turn it off and it resumes.
 - Turn off `input_boolean.sim_somebody_home`: all rooms pause and the CH switch goes off; turn it on and everything returns.
 - Presets eco and warm on the room climates, pause/resume services, `set_all_off`.
+- Experimental features (on in the VM, or `setup_heating.py --experimental`): call `cloudless_multiroom_thermostat.experimental_report` for the report now; the night prediction runs at 21:00. Gas per degree-day needs real days of recorder history, so it stays `unknown` at first. See [../docs/experimental.md](../docs/experimental.md).
 - Restart HA: rooms come back in the same mode, preset and target.
 
 ## Tuning the simulation
