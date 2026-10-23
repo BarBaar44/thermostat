@@ -66,7 +66,7 @@ from ..const import (
     WINNER_OFF,
     signal_update,
 )
-from . import gas_core, night_core, store, tuner_core
+from . import gas_core, night_core, progress, store, tuner_core
 
 if TYPE_CHECKING:
     from ..controller import HeatingController, Room
@@ -653,6 +653,9 @@ class ExperimentalRunner:
             message += "\n\n" + gas_core.summary_line(gas)
         else:
             message += "\n\nGas per degree-day: set a gas meter and an outdoor sensor to enable"
+        message += "\n\nProgress to stable:\n" + "\n".join(
+            progress.report_lines(gas, nights, episodes)
+        )
         message += f"\n\n[What these mean]({DOCS_EXPERIMENTAL_URL})"
         persistent_notification.async_create(
             self.hass,
