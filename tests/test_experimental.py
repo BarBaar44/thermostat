@@ -279,6 +279,8 @@ async def test_report_notification(hass: HomeAssistant) -> None:
     assert "no complete warm-up episodes today" in message
     assert "Night, Living" in message
     assert "set a gas meter and an outdoor sensor" in message
+    assert "Progress to stable:" in message
+    assert "Night model: 0 of 30 predicted nights" in message
     assert DOCS_EXPERIMENTAL_URL in message
     assert kw["notification_id"].endswith("_report")
 

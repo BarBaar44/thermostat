@@ -20,12 +20,14 @@ Each feature has a bar to clear. Until it does, it stays observe only. After it 
 
 | Feature | Stable when | Then it may |
 |---|---|---|
-| Gas per degree-day | One full heating season of data, and the hot-water rate is a setting instead of a constant | Serve as the official check for the other features |
+| Gas per degree-day | A full year of data (so a whole heating season), and the hot-water rate is a setting instead of a constant | Serve as the official check for the other features |
 | Night cooldown model | At least 30 predicted nights spread over 3 or more outdoor bands, average error 0.3 °C or less, no night off by more than 0.6 °C | Optimum start: begin heating at the predicted time |
-| Warm-up episodes and PID advice | Advice applied by hand in at least 2 outdoor bands, each followed by 5 or more valid episodes with less overshoot or a faster warm-up, and gas per degree-day not worse | Set the PID values per outdoor band (gain scheduling) |
+| Warm-up episodes and PID advice | PID values changed by hand in at least 2 outdoor bands, each followed by 5 or more valid episodes of the followed room with less overshoot or a faster warm-up on average than the 5 before, and gas per degree-day not worse | Set the PID values per outdoor band (gain scheduling) |
 | Evening report | The features it reports on are stable | Stay as it is |
 
-These thresholds are a starting point and may be adjusted as more data comes in.
+The night model counts its last 30 valid nights that had a prediction. A change by hand is noticed when the Kp, Ki or Kd of an episode differ from the episode before; the band is the one the first episode after the change ran in. Whether gas per degree-day got worse is left to you: one change does not move it enough to tell automatically.
+
+The [evening report](#evening-report) shows where each feature stands against these numbers. They are a starting point and may be adjusted as more data comes in.
 
 ## Maturity at a glance
 
@@ -85,7 +87,7 @@ Each episode is judged on time to target (more than 60 minutes is slow), oversho
 
 ## Evening report
 
-Every evening at 21:00 a persistent notification lists today's warm-up episodes, the current PID values and advice, the last night, tonight's prediction and gas per degree-day, with a link to this page. Call the service `cloudless_multiroom_thermostat.experimental_report` to get it on demand (it then shows the stored prediction instead of making a new one).
+Every evening at 21:00 a persistent notification lists today's warm-up episodes, the current PID values and advice, the last night, tonight's prediction, gas per degree-day and the progress of each feature towards stable, with a link to this page. Call the service `cloudless_multiroom_thermostat.experimental_report` to get it on demand (it then shows the stored prediction instead of making a new one).
 
 The time is fixed at 21:00 because the night model measures the evening drop from 21:00.
 

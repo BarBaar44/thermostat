@@ -188,7 +188,8 @@ def summary(days):
     base, n_base, source = base_gas(home)
     out = {"base": round(base, 3) if base is not None else None, "base_days": n_base,
            "base_source": source, "last": days[-1] if days else None, "w7": None, "w28": None,
-           "away_28": len([d for d in days[-28:] if d.get("away")])}
+           "away_28": len([d for d in days[-28:] if d.get("away")]),
+           "days": len(days), "first": days[0]["date"] if days else None}
     if base is None or not home:
         return out
     out["w7"] = _window(home, 7, base)
