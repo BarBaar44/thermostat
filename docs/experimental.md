@@ -4,6 +4,29 @@ Cloudless Multiroom Thermostat has a set of **observe-only** diagnostics. They r
 
 They are off by default. To switch them on: **Settings > Devices & services > Cloudless Multiroom Thermostat > Configure**, tick **Enable experimental features**, then fill in the entities on the next page. Every entity is optional; each feature runs as soon as the entities it needs are set.
 
+## What this is for
+
+The aim is to learn how one room and the boiler behave, so the heating can later tune its own settings to the weather instead of running on fixed values. The room you pick under **Room to follow** (usually the living room: people are there and it leads the heating most often) is profiled:
+
+- **How it warms up**: how the boiler's PID loop behaves on each warm-up, per outdoor temperature band (warm-up episodes).
+- **How it cools down**: how fast the room loses heat at night (night cooldown model).
+- **What it costs**: gas use corrected for the weather (gas per degree-day). This one covers the whole house and is the yardstick: it shows whether a change to the other two actually saved gas.
+
+The end goal is **dynamic parameters**: PID values per outdoor band instead of one fixed set, and a morning start time that reaches the comfort temperature just in time (optimum start).
+
+## When a feature stops being experimental
+
+Each feature has a bar to clear. Until it does, it stays observe only. After it does, it may act on the heating, but only once you switch that on separately.
+
+| Feature | Stable when | Then it may |
+|---|---|---|
+| Gas per degree-day | One full heating season of data, and the hot-water rate is a setting instead of a constant | Serve as the official check for the other features |
+| Night cooldown model | At least 30 predicted nights spread over 3 or more outdoor bands, average error 0.3 °C or less, no night off by more than 0.6 °C | Optimum start: begin heating at the predicted time |
+| Warm-up episodes and PID advice | Advice applied by hand in at least 2 outdoor bands, each followed by 5 or more valid episodes with less overshoot or a faster warm-up, and gas per degree-day not worse | Set the PID values per outdoor band (gain scheduling) |
+| Evening report | The features it reports on are stable | Stay as it is |
+
+These thresholds are a starting point and may be adjusted as more data comes in.
+
 ## Maturity at a glance
 
 | Feature | Maturity | Needs | Output |
@@ -17,7 +40,7 @@ Maturity means:
 
 - **Alpha**: the data collection works, the conclusions are not trustworthy yet. Read them, don't act on them.
 - **Beta**: the numbers are useful; details may still change.
-- **Stable**: not used yet; nothing here is stable.
+- **Stable**: not used yet; nothing here is stable. See [When a feature stops being experimental](#when-a-feature-stops-being-experimental).
 
 The analysis has run in one house (an Atag boiler on OpenTherm with an ESPHome PID) since October 2026; the maturity above describes that analysis. If something looks wrong, please [open an issue](https://github.com/BarBaar44/thermostat/issues).
 
