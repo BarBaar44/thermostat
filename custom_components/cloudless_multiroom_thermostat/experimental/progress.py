@@ -29,7 +29,7 @@ def gas_progress(summary):
     if summary is None:
         return {"done": False, "text": "Gas per degree-day: not set up"}
     days = summary.get("days", 0)
-    text = "Gas per degree-day: {} of {} days of data".format(min(days, GAS_DAYS), GAS_DAYS)
+    text = f"Gas per degree-day: {min(days, GAS_DAYS)} of {GAS_DAYS} days of data"
     if summary.get("first"):
         text += " (since {})".format(summary["first"])
     text += "; hot-water rate is still a constant"
@@ -40,7 +40,7 @@ def night_progress(nights):
     """The last NIGHTS valid nights with a prediction: count, bands and errors."""
     judged = [n for n in nights if n.get("valid") and n.get("prediction_error") is not None][-NIGHTS:]
     if not judged:
-        return {"done": False, "text": "Night model: 0 of {} predicted nights".format(NIGHTS)}
+        return {"done": False, "text": f"Night model: 0 of {NIGHTS} predicted nights"}
     errors = [abs(n["prediction_error"]) for n in judged]
     bands = {tuner_core.outdoor_band(n.get("outdoor_avg")) for n in judged} - {"unknown"}
     mean, worst = sum(errors) / len(errors), max(errors)
@@ -51,11 +51,8 @@ def night_progress(nights):
         and worst <= NIGHT_MAX_ERROR
     )
     text = (
-        "Night model: {} of {} predicted nights, {} of {} outdoor bands, "
-        "average error {:.2f} (max {}), worst {:.1f} (max {})".format(
-            len(judged), NIGHTS, min(len(bands), NIGHT_BANDS), NIGHT_BANDS,
-            mean, NIGHT_MEAN_ERROR, worst, NIGHT_MAX_ERROR,
-        )
+        f"Night model: {len(judged)} of {NIGHTS} predicted nights, {min(len(bands), NIGHT_BANDS)} of {NIGHT_BANDS} outdoor bands, "
+        f"average error {mean:.2f} (max {NIGHT_MEAN_ERROR}), worst {worst:.1f} (max {NIGHT_MAX_ERROR})"
     )
     return {"done": done, "text": text}
 
@@ -109,7 +106,7 @@ def pid_progress(episodes):
             band, min(n, PID_EPISODES_AFTER), PID_EPISODES_AFTER,
             " better" if better else (" not better" if n and c["before"] else ""),
         ))
-    text = "PID advice: {} of {} outdoor bands confirmed".format(min(good, PID_BANDS), PID_BANDS)
+    text = f"PID advice: {min(good, PID_BANDS)} of {PID_BANDS} outdoor bands confirmed"
     if parts:
         text += " (episodes after a change by hand: {})".format(", ".join(parts))
     else:
