@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Rooms that only heat along:** a new room option, **Drives the heat source** (default on). Turned off, the room never becomes the winner, never starts an on/off heat source and doesn't turn on the central heating enable switch, but its TRVs still get its target and open while another room drives the heat source. For a hallway or another space that cools much faster than the rooms around it. New role `waiting` while such a room is below target and nothing else needs heat.
+
 ## 1.0.0
 
 First release of **Cloudless Multiroom Thermostat**, the Home Assistant integration that replaces the YAML setup in this repo.

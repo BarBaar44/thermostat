@@ -56,6 +56,7 @@ from .const import (
     CONF_AWAY_MODE,
     CONF_BUFFER,
     CONF_CH_SWITCH,
+    CONF_DRIVES_SOURCE,
     CONF_ECO_TEMP,
     CONF_EXT_TEMP,
     CONF_HEARTBEAT_MIN,
@@ -74,6 +75,7 @@ from .const import (
     CONF_WINDOWS,
     DEFAULT_AWAY_MODE,
     DEFAULT_BUFFER,
+    DEFAULT_DRIVES_SOURCE,
     DEFAULT_ECO_TEMP,
     DEFAULT_HEARTBEAT_MIN,
     DEFAULT_HYSTERESIS,
@@ -145,6 +147,11 @@ class Room:
     @property
     def buffer(self) -> float:
         return float(self.config.get(CONF_BUFFER, DEFAULT_BUFFER))
+
+    @property
+    def drives(self) -> bool:
+        """False for a room that heats along but must never run the heat source."""
+        return bool(self.config.get(CONF_DRIVES_SOURCE, DEFAULT_DRIVES_SOURCE))
 
 
 class HeatingController:
@@ -232,7 +239,9 @@ class HeatingController:
             return "winner"
         target = self.effective_target(room)
         if room.current is not None and target - room.current > 0:
-            return "passenger" if self.source_running() else "calls_for_heat"
+            if self.source_running():
+                return "passenger"
+            return "calls_for_heat" if room.drives else "waiting"
         return "reached"
 
     def legacy_json(self) -> str:
@@ -493,6 +502,7 @@ class HeatingController:
                 self.is_heating(room),
                 self.effective_target(room),
                 room.current,
+                room.drives,
             )
             for room in self.rooms.values()
         ]
@@ -547,7 +557,7 @@ class HeatingController:
     async def _sync_heat_source(self, demands: list[RoomDemand], force: bool) -> None:
         settings = self.settings
         source = settings.get(CONF_HEAT_SOURCE_ENTITY)
-        any_heating = any(d.heating for d in demands)
+        any_heating = any(d.heating and d.drives for d in demands)
 
         if settings.get(CONF_CH_SWITCH):
             await self._sync_switch(settings[CONF_CH_SWITCH], any_heating)

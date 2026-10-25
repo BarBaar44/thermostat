@@ -39,6 +39,14 @@ def test_missing_temperature_has_no_demand():
     assert w.room_id is None
 
 
+def test_room_that_does_not_drive_never_wins():
+    hall = RoomDemand("hall", "Hall", True, 20.0, 15.0, drives=False)
+    assert select_winner([hall, room("a", target=20, current=19.5)], 10, None).room_id == "a"
+    assert select_winner([hall], 10, None).room_id is None
+    assert switch_should_run([hall], currently_on=False, hysteresis=0.3) is False
+    assert switch_should_run([hall], currently_on=True, hysteresis=0.3) is False
+
+
 def test_switch_hysteresis():
     rooms = [room("a", target=20, current=19.8)]
     assert switch_should_run(rooms, currently_on=False, hysteresis=0.3) is False

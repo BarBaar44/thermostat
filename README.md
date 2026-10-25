@@ -51,7 +51,7 @@ Requires Home Assistant 2026.10 or newer.
 
 **Rooms**: on the integration page, **Add room**, in two steps:
 
-1. Name, eco and warm temperature, the overshoot buffer (default 1.0 °C) and the target range and step.
+1. Name, eco and warm temperature, the overshoot buffer (default 1.0 °C), whether the room **drives the heat source** (default on, see [Rooms that only heat along](#rooms-that-only-heat-along)) and the target range and step.
 2. The room temperature sensor, the TRVs (none is fine: the room then only adds heat demand), the TRVs' external temperature inputs (for example Sonoff TRVZB or Shelly BLU TRV), and window or door sensors with their open and close delays.
 
 Add as many rooms as you like; the pencil next to a room edits it. To put a room in an area, set the area on the room's device page. Settings of the heating system itself are under **Configure**.
@@ -60,7 +60,7 @@ Scheduling is left to you: an automation or a scheduler card that sets presets o
 
 ## What it creates
 
-- **A climate entity per room**: Heat/Off, target temperature, presets **Eco** and **Warm** (setting a temperature yourself switches to **Manual**). Attributes show its role (`winner`, `passenger`, `calls_for_heat`, `reached`, `paused`, `off`) and why it is paused. Mode, preset and target survive a restart.
+- **A climate entity per room**: Heat/Off, target temperature, presets **Eco** and **Warm** (setting a temperature yourself switches to **Manual**). Attributes show its role (`winner`, `passenger`, `calls_for_heat`, `waiting`, `reached`, `paused`, `off`) and why it is paused. Mode, preset and target survive a restart.
 - **Winning room**: the room driving the heat source, or Off, with its target, temperature and gap as attributes.
 - **Winning room temperature**: that room's temperature, for a firmware PID that needs it as its process value (see [`thermostat.yaml`](#esphome-opentherm-thermostat-thermostatyaml)).
 - Per room: **Paused** (window, away or manual, with the reason) and, with window sensors, a debounced **Window** sensor.
@@ -76,6 +76,8 @@ A boiler has only **one** flow temperature, while every room wants its own. Two 
 **Tier 2, the valves:** every room's TRVs get the room's target and regulate their own valve. Home Assistant never commands valve positions: as long as the water arriving is warm enough for a room's own target, its TRVs stay open and the room heats along (a **passenger**). When a room reaches its target, its TRVs close by themselves. Only a room that wants more than the current winner waits, until it becomes the winner itself, which happens as soon as its gap is the largest.
 
 **The overshoot buffer (winner only):** the winning room's TRVs get their target plus the buffer (default 1 °C); passengers get their exact target. Two controllers watch the winning room at once: the boiler's PID, which eases off its modulation gradually, and that room's TRV. Without headroom the TRV starts closing while the boiler is still pushing hot water, a fight that wastes heat and can trip a low-flow fault. A passenger's TRV can't get into that fight, because the boiler isn't modulating for it. The buffer moves with the winner.
+
+<a id="rooms-that-only-heat-along"></a>**Rooms that only heat along:** turn off **Drives the heat source** for a room that may be heated but must never make the heat source run, such as a hallway that cools much faster than the rest of the house and would otherwise keep winning. Such a room never becomes the winner, never starts an on/off heat source and doesn't turn on the central heating enable switch. Its TRVs still get its target, so it heats along as a passenger whenever another room drives the heat source. While nothing else needs heat, its role is `waiting`.
 
 **One temperature per room:** the room sensor's reading is also pushed to the TRVs' external temperature inputs, with a heartbeat (some TRVs, like the Sonoff TRVZB, fall back to their own sensor after 2 hours without an update). A TRV's own sensor sits on the radiator and reads warm; this way the room climate, the winner choice and the TRV all work from the same number. TRV writes are skipped when nothing changed, to save batteries.
 

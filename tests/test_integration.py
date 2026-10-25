@@ -44,6 +44,13 @@ OFFICE = {
     "window_sensors": [],
     "warm_temperature": 18.0,
 }
+HALLWAY = {
+    **OFFICE,
+    "name": "Hallway",
+    "temperature_sensor": "sensor.hallway_temp",
+    "trvs": ["climate.trv_hallway"],
+    "drives_heat_source": False,
+}
 SYSTEM = {
     "heat_source_type": "climate",
     "heat_source_entity": "climate.boiler",
@@ -78,6 +85,8 @@ def _states(hass: HomeAssistant) -> None:
     hass.states.async_set("sensor.office_temp", "17.0", {"device_class": "temperature"})
     hass.states.async_set("climate.trv_living", "heat", TRV_ATTRS)
     hass.states.async_set("climate.trv_office", "heat", TRV_ATTRS)
+    hass.states.async_set("sensor.hallway_temp", "14.0", {"device_class": "temperature"})
+    hass.states.async_set("climate.trv_hallway", "heat", TRV_ATTRS)
     hass.states.async_set("number.trv_living_ext", "16.0", {"min": -10, "max": 50, "step": 0.1})
     hass.states.async_set("binary_sensor.garden_door", "off")
     hass.states.async_set("climate.boiler", "heat", {"temperature": 10})
@@ -109,6 +118,7 @@ async def setup(hass: HomeAssistant):
         subentries_data=[
             ConfigSubentryData(data=LIVING, subentry_type="room", title="Living", unique_id=None),
             ConfigSubentryData(data=OFFICE, subentry_type="room", title="Office", unique_id=None),
+            ConfigSubentryData(data=HALLWAY, subentry_type="room", title="Hallway", unique_id=None),
         ],
     )
     entry.add_to_hass(hass)
@@ -169,6 +179,29 @@ async def test_winner_gets_buffer_passenger_does_not(hass: HomeAssistant, setup)
     assert calls.last("climate.trv_office")[1]["temperature"] == 19.0
     assert calls.last("climate.trv_living")[1]["temperature"] == 19.0
     assert calls.last("climate.boiler")[1]["temperature"] == 18.0
+
+
+async def test_room_that_does_not_drive_only_heats_along(hass: HomeAssistant, setup) -> None:
+    _, calls = setup
+    calls.clear()
+    await _heat(hass, "climate.hallway")  # 18 vs 14: the biggest gap, but it may not drive
+    assert hass.states.get("sensor.heating_winning_room").state == "Off"
+    assert calls.last("climate.trv_hallway")[1]["temperature"] == 18.0
+    assert calls.last("climate.boiler") is None
+    assert calls.last("switch.ch_enabled") is None
+    hallway = hass.states.get("climate.hallway")
+    assert hallway.attributes["role"] == "waiting"
+    assert hallway.attributes["hvac_action"] == "idle"
+
+    # Living drives the boiler; the hallway heats along without the buffer
+    hass.states.async_set("climate.trv_hallway", "heat", {**TRV_ATTRS, "temperature": 18})
+    await _heat(hass, "climate.living")
+    assert hass.states.get("sensor.heating_winning_room").state == "Living"
+    assert calls.last("climate.boiler")[1]["temperature"] == 19.0
+    assert calls.last("climate.trv_hallway")[1]["temperature"] == 18.0
+    hallway = hass.states.get("climate.hallway")
+    assert hallway.attributes["role"] == "passenger"
+    assert hallway.attributes["hvac_action"] == "heating"
 
 
 async def test_window_pauses_and_resumes(hass: HomeAssistant, setup) -> None:
