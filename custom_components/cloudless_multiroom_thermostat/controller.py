@@ -210,7 +210,9 @@ class HeatingController:
 
     def area_label(self, room: Room) -> str:
         """Area the user put the room's device in, else the room name (legacy sensor, card)."""
-        device = dr.async_get(self.hass).async_get_device(identifiers={(DOMAIN, room.room_id)})
+        device = dr.async_get(self.hass).async_get_device_by_identifier(
+            (DOMAIN, room.room_id), self.entry.entry_id
+        )
         if device is not None and device.area_id:
             area = ar.async_get(self.hass).async_get_area(device.area_id)
             if area:

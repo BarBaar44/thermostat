@@ -389,7 +389,7 @@ async def test_edit_room_keeps_device_area_set_in_ha(hass: HomeAssistant, setup)
     office = next(s for s in entry.subentries.values() if s.title == "Office")
     study = ar.async_get(hass).async_create("Study")
     devices = dr.async_get(hass)
-    device = devices.async_get_device(identifiers={(DOMAIN, office.subentry_id)})
+    device = devices.async_get_device_by_identifier((DOMAIN, office.subentry_id), entry.entry_id)
     devices.async_update_device(device.id, area_id=study.id)
 
     flows = hass.config_entries.subentries
@@ -401,7 +401,7 @@ async def test_edit_room_keeps_device_area_set_in_ha(hass: HomeAssistant, setup)
     assert result["type"] is FlowResultType.ABORT and result["reason"] == "reconfigure_successful"
     await hass.async_block_till_done()
     assert entry.subentries[office.subentry_id].data["warm_temperature"] == 21.0
-    assert devices.async_get_device(identifiers={(DOMAIN, office.subentry_id)}).area_id == study.id
+    assert devices.async_get_device_by_identifier((DOMAIN, office.subentry_id), entry.entry_id).area_id == study.id
 
 
 async def test_rename_room_climate_keeps_entity(hass: HomeAssistant, setup) -> None:
@@ -411,8 +411,8 @@ async def test_rename_room_climate_keeps_entity(hass: HomeAssistant, setup) -> N
     entry, _ = setup
     living = next(s for s in entry.subentries.values() if s.title == "Living")
     devices = dr.async_get(hass)
-    system = devices.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
-    room = devices.async_get_device(identifiers={(DOMAIN, living.subentry_id)})
+    system = devices.async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
+    room = devices.async_get_device_by_identifier((DOMAIN, living.subentry_id), entry.entry_id)
     assert room.via_device_id == system.id
 
     er.async_get(hass).async_update_entity("climate.living", new_entity_id="climate.virtual_thermostat_living")
@@ -428,7 +428,7 @@ async def test_winner_area_comes_from_device_area(hass: HomeAssistant, setup) ->
     living = next(s for s in entry.subentries.values() if s.title == "Living")
     lounge = ar.async_get(hass).async_create("Lounge")
     devices = dr.async_get(hass)
-    device = devices.async_get_device(identifiers={(DOMAIN, living.subentry_id)})
+    device = devices.async_get_device_by_identifier((DOMAIN, living.subentry_id), entry.entry_id)
     devices.async_update_device(device.id, area_id=lounge.id)
     await _heat(hass, "climate.living")
     assert hass.states.get("sensor.heating_winning_room").attributes["area"] == "Lounge"
