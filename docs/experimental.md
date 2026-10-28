@@ -141,7 +141,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 - **What:** how much gas the boiler burns per minute while it makes hot water, in m³ per burner minute. Default 0.019, measured on one boiler (about 11 kW on hot water).
 - **Why:** in an hour with both heating and hot water, the hot-water part of that hour's gas is its hot-water minutes times this rate. With the wrong rate, gas shifts between hot water and heating, and gas per degree-day is off.
 - **Required:** no, the default is used. Only matters when burner flame, hot water active and central heating active are set.
-- **Where from:** measure it. With the heating off (summer, or all rooms off), run a shower for about 10 minutes. Read the gas meter before and after and divide by the minutes the burner was on (the flame sensor's history). Repeat a few times and take the middle value. A rough alternative: the boiler's hot-water power in kW divided by about 586 gives m³ per minute (Dutch gas; 11 kW is 0.019).
+- **Where from:** measure it. With the heating off (summer, or all rooms off), run a shower for about 10 minutes. Read the gas meter before and after and divide by the minutes the burner was on (the flame sensor's history). Repeat a few times and take the middle value.
 - **Changing it:** only days split after the change use the new value. Days already split keep theirs, because Home Assistant keeps the boiler history for 7 days only. Each split day stores the rate it used (`dhw_rate` in `gas_days.jsonl`).
 
 ### Flow water temperature, Return water temperature
