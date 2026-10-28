@@ -102,8 +102,8 @@ Switching the features off stops all sampling; the files and your entity choices
 
 ### Coming from the pyscript tuner
 
-The integration reads the same five files as the pyscript tuner in [`pyscript/`](../pyscript), so its history carries over:
+The integration reads the same five files as the pyscript tuner ([`pyscript/` in v1.1.0](https://github.com/BarBaar44/thermostat/tree/v1.1.0/pyscript)), so its history carries over:
 
 1. Stop the tuner (remove it from pyscript's `apps:` or disable pyscript) and **restart Home Assistant**. The tuner's sensors, such as `sensor.heating_gas_per_degree_day`, stay in the state machine until a restart. If one is still there when you enable the features, the integration's sensor gets `_2` instead of that entity ID.
 2. Copy `episodes.jsonl`, `nights.jsonl`, `gas_days.jsonl`, `state.json` and `night_state.json` from the tuner's `data_dir` (default `config/heating_tuner`) into `config/cloudless_multiroom_thermostat/<entry id>/`.
-3. Enable the experimental features. The integration appends to the copied files, and dashboards that used the tuner's gas sensor keep working when the system is called "Heating".
+3. Enable the experimental features. The integration appends to the copied files, and dashboards that used the tuner's gas sensor keep working when the system is called "Heating". The tuner's other sensors get new IDs, so dashboards using them need editing: `sensor.heating_tuner_last_overshoot` → `sensor.heating_last_warm_up_overshoot`, `sensor.heating_tuner_night_prediction` → `sensor.heating_night_prediction`, `sensor.heating_tuner_recommendation` → `sensor.heating_pid_advice` (for a system called "Heating").
