@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Docs:** [docs/experimental.md](docs/experimental.md) now explains every entity on the experimental settings page: what it is, why it's needed, whether it's required and where to get it.
 - **Removed the legacy YAML setup and the pyscript tuner** (`automations/`, `scripts/`, `sensors/`, `deltaTemperature`, `housewarming.yaml`, `pyscript/`). The integration replaces them; they're still in the [v1.1.0 tag](https://github.com/BarBaar44/thermostat/tree/v1.1.0) for reference and for carrying tuner history over.
 
 ## 1.1.0
