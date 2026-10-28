@@ -33,7 +33,7 @@ The [evening report](#evening-report) shows where each feature stands against th
 
 | Feature | Maturity | Needs | Output |
 |---|---|---|---|
-| [Gas per degree-day](#gas-per-degree-day) | **Beta**: running daily since October 2026, the figures are usable for comparing weeks | Gas meter, outdoor temperature. For the hot-water split also burner flame, hot water active, central heating active. Optional: people at home | `sensor.<system>_heating_gas_per_degree_day` |
+| [Gas per degree-day](#gas-per-degree-day) | **Beta**: running daily since October 2026, the figures are usable for comparing weeks | Gas meter, outdoor temperature. For the hot-water split also burner flame, hot water active, central heating active. Optional: people at home | `sensor.<system>_gas_per_degree_day` |
 | [Night cooldown model](#night-cooldown-model) | **Alpha**: still learning; first back-test was 0.2 to 0.8 °C off | Outdoor temperature, weather forecast, a room to follow | `sensor.<system>_night_prediction` |
 | [Warm-up episodes and PID advice](#warm-up-episodes-and-pid-advice) | **Alpha**: records reliably, advice not yet validated, never applied | Burner flame. For advice: Kp, Ki, Kd of a firmware PID (for example ESPHome) | `sensor.<system>_last_warm_up_overshoot`, `sensor.<system>_pid_advice` |
 | [Evening report](#evening-report) | **Beta**: a summary of the above | Any of the above | Persistent notification at 21:00 |
@@ -99,3 +99,11 @@ Everything stays on your Home Assistant. Files are stored in `config/cloudless_m
 - `state.json`, `night_state.json`: small state files.
 
 Switching the features off stops all sampling; the files and your entity choices are kept, so switching back on continues where it left off. Delete the folder to start over.
+
+### Coming from the pyscript tuner
+
+The integration reads the same five files as the pyscript tuner ([`pyscript/` in v1.1.0](https://github.com/BarBaar44/thermostat/tree/v1.1.0/pyscript)), so its history carries over:
+
+1. Stop the tuner (remove it from pyscript's `apps:` or disable pyscript) and **restart Home Assistant**. The tuner's sensors, such as `sensor.heating_gas_per_degree_day`, stay in the state machine until a restart. If one is still there when you enable the features, the integration's sensor gets `_2` instead of that entity ID.
+2. Copy `episodes.jsonl`, `nights.jsonl`, `gas_days.jsonl`, `state.json` and `night_state.json` from the tuner's `data_dir` (default `config/heating_tuner`) into `config/cloudless_multiroom_thermostat/<entry id>/`.
+3. Enable the experimental features. The integration appends to the copied files, and dashboards that used the tuner's gas sensor keep working when the system is called "Heating". The tuner's other sensors get new IDs, so dashboards using them need editing: `sensor.heating_tuner_last_overshoot` → `sensor.heating_last_warm_up_overshoot`, `sensor.heating_tuner_night_prediction` → `sensor.heating_night_prediction`, `sensor.heating_tuner_recommendation` → `sensor.heating_pid_advice` (for a system called "Heating").

@@ -89,7 +89,7 @@ def _living_id(entry) -> str:
 async def test_off_by_default_no_sensors(hass: HomeAssistant) -> None:
     entry = await _setup(hass, {})
     assert entry.runtime_data.experimental is None
-    assert hass.states.get("sensor.heating_heating_gas_per_degree_day") is None
+    assert hass.states.get("sensor.heating_gas_per_degree_day") is None
 
 
 async def test_options_enable_experimental(hass: HomeAssistant) -> None:
@@ -126,7 +126,7 @@ async def test_options_enable_experimental(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     assert entry.options["exp_gas"] == "sensor.gas" and entry.options["exp_flame"] is None
     assert entry.runtime_data.experimental is not None
-    for name in ("heating_gas_per_degree_day", "night_prediction", "last_warm_up_overshoot", "pid_advice"):
+    for name in ("gas_per_degree_day", "night_prediction", "last_warm_up_overshoot", "pid_advice"):
         assert hass.states.get(f"sensor.heating_{name}") is not None, name
 
     # Switching off keeps the experimental settings for next time

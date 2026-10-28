@@ -218,7 +218,7 @@
         "name": "Delta temperature (legacy)"
       },
       "exp_gas_per_degree_day": {
-        "name": "Heating gas per degree-day"
+        "name": "Gas per degree-day"
       },
       "exp_night_prediction": {
         "name": "Night prediction"
