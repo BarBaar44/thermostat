@@ -99,3 +99,11 @@ Everything stays on your Home Assistant. Files are stored in `config/cloudless_m
 - `state.json`, `night_state.json`: small state files.
 
 Switching the features off stops all sampling; the files and your entity choices are kept, so switching back on continues where it left off. Delete the folder to start over.
+
+### Coming from the pyscript tuner
+
+The integration reads the same five files as the pyscript tuner in [`pyscript/`](../pyscript), so its history carries over:
+
+1. Stop the tuner (remove it from pyscript's `apps:` or disable pyscript) and **restart Home Assistant**. The tuner's sensors, such as `sensor.heating_gas_per_degree_day`, stay in the state machine until a restart. If one is still there when you enable the features, the integration's sensor gets `_2` instead of that entity ID.
+2. Copy `episodes.jsonl`, `nights.jsonl`, `gas_days.jsonl`, `state.json` and `night_state.json` from the tuner's `data_dir` (default `config/heating_tuner`) into `config/cloudless_multiroom_thermostat/<entry id>/`.
+3. Enable the experimental features. The integration appends to the copied files, and dashboards that used the tuner's gas sensor keep working when the system is called "Heating".
