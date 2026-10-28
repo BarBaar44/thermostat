@@ -17,7 +17,7 @@ def room_device_info(controller: HeatingController, room: Room) -> DeviceInfo:
         name=room.name,
         manufacturer=MANUFACTURER,
         model="Room",
-        via_device=(DOMAIN, controller.entry.entry_id),
+        via_device_id=controller.system_device_id,
     )
 
 
