@@ -21,6 +21,7 @@ from .const import (
     AWAY_MODES,
     CONF_AWAY_MODE,
     CONF_BUFFER,
+    CONF_DRIVES_SOURCE,
     CONF_CH_SWITCH,
     CONF_ECO_TEMP,
     CONF_EXP_CH_ACTIVE,
@@ -62,6 +63,7 @@ from .const import (
     CONF_WINDOWS,
     DEFAULT_AWAY_MODE,
     DEFAULT_BUFFER,
+    DEFAULT_DRIVES_SOURCE,
     DEFAULT_COMFORT_WEEKDAY,
     DEFAULT_COMFORT_WEEKEND,
     DEFAULT_ECO_TEMP,
@@ -315,6 +317,7 @@ ROOM_SCHEMA = vol.Schema(
         vol.Required(CONF_ECO_TEMP, default=DEFAULT_ECO_TEMP): _temp(5, 30),
         vol.Required(CONF_WARM_TEMP, default=DEFAULT_WARM_TEMP): _temp(5, 30),
         vol.Required(CONF_BUFFER, default=DEFAULT_BUFFER): _temp(0, 3, 0.1),
+        vol.Required(CONF_DRIVES_SOURCE, default=DEFAULT_DRIVES_SOURCE): selector.BooleanSelector(),
         vol.Required(CONF_MIN_TEMP, default=DEFAULT_MIN_TEMP): _temp(5, 30),
         vol.Required(CONF_MAX_TEMP, default=DEFAULT_MAX_TEMP): _temp(5, 35),
         vol.Required(CONF_STEP, default=str(DEFAULT_STEP)): selector.SelectSelector(

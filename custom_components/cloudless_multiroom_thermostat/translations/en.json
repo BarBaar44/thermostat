@@ -121,12 +121,14 @@
             "eco_temperature": "Eco temperature",
             "warm_temperature": "Warm temperature",
             "overshoot_buffer": "Overshoot buffer",
+            "drives_heat_source": "Drives the heat source",
             "min_temp": "Minimum target",
             "max_temp": "Maximum target",
             "target_temp_step": "Target step"
           },
           "data_description": {
-            "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source."
+            "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source.",
+            "drives_heat_source": "Turn off for a room that may heat along but must never make the heat source run, such as a hallway that cools much faster than the rest of the house. Its TRVs still get its target and open while another room drives the heat source."
           }
         },
         "reconfigure": {
@@ -137,12 +139,14 @@
             "eco_temperature": "Eco temperature",
             "warm_temperature": "Warm temperature",
             "overshoot_buffer": "Overshoot buffer",
+            "drives_heat_source": "Drives the heat source",
             "min_temp": "Minimum target",
             "max_temp": "Maximum target",
             "target_temp_step": "Target step"
           },
           "data_description": {
-            "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source."
+            "overshoot_buffer": "Added to the TRV targets only while this room drives the heat source.",
+            "drives_heat_source": "Turn off for a room that may heat along but must never make the heat source run, such as a hallway that cools much faster than the rest of the house. Its TRVs still get its target and open while another room drives the heat source."
           }
         },
         "sensors": {

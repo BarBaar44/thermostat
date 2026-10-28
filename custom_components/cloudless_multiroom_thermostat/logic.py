@@ -14,6 +14,7 @@ class RoomDemand:
     heating: bool  # effective mode is heat (not off, paused or away-off)
     target: float | None
     current: float | None
+    drives: bool = True  # False: heats along, never drives the heat source
 
 
 @dataclass(frozen=True)
@@ -35,13 +36,14 @@ def select_winner(
     Rule 1+2: among heating rooms, the largest positive demand (target minus current).
     Rule 3: with no positive demand, the largest overshoot only fills current/delta.
     Rule 0: no genuine demand means "Off" with the off temperature.
+    Rooms that don't drive the heat source never count.
     """
     best_delta = -999.0
     best_dev = 0.0
     best: RoomDemand | None = None
 
     for room in rooms:
-        if not room.heating or room.target is None or room.current is None:
+        if not room.heating or not room.drives or room.target is None or room.current is None:
             continue
         delta = round(room.target - room.current, 1)
         dev = abs(delta)
@@ -64,7 +66,7 @@ def switch_should_run(
     deltas = [
         r.target - r.current
         for r in rooms
-        if r.heating and r.target is not None and r.current is not None
+        if r.heating and r.drives and r.target is not None and r.current is not None
     ]
     if not deltas:
         return False
