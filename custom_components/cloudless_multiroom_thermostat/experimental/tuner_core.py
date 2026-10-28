@@ -70,12 +70,7 @@ def analyse(samples, params, start_reason, extra_reasons=(), tuned_areas=TUNED_A
     hours = max(len(samples) / 60.0, 1 / 60.0)
     outdoors = [s["outdoor"] for s in samples if s["outdoor"] is not None]
     outdoor_avg = round(sum(outdoors) / len(outdoors), 1) if outdoors else None
-    integrals = [s["integral"] for s in samples if s["integral"] is not None]
     gas = [s.get("gas") for s in samples if s.get("gas") is not None]
-    # Return water while the burner runs for heating (not hot water): below
-    # ~55 degC the condensing boiler recovers extra heat, the lower the better
-    returns = [s.get("ret") for s in samples
-               if s["flame"] and not s["dhw"] and s.get("ret") is not None]
 
     if len(samples) < MIN_EPISODE_MIN:
         reasons.append("too_short")
@@ -112,13 +107,8 @@ def analyse(samples, params, start_reason, extra_reasons=(), tuned_areas=TUNED_A
         "flame_starts": flame_starts,
         "flame_starts_per_hour": round(flame_starts / hours, 1),
         "flame_on_min": len([1 for s in samples if s["flame"]]),
-        "water_peak": max([s["water"] for s in samples if s["water"] is not None], default=None),
         "gas_used": round(gas[-1] - gas[0], 3) if gas else None,
-        "return_avg": round(sum(returns) / len(returns), 1) if returns else None,
-        "return_max": max(returns) if returns else None,
         "people_avg": _avg([s.get("people") for s in samples]),
-        "integral_min": min(integrals, default=None),
-        "integral_max": max(integrals, default=None),
         "params": params,
         "valid": not reasons,
         "invalid_reasons": reasons,
@@ -193,9 +183,8 @@ def summary_line(e):
         return "- {} {}: skipped ({})".format(start, e["area"], ", ".join(e["invalid_reasons"]))
     return (
         "- {} {} -> {:.1f} degC (outside {} degC): target after {} min, "
-        "overshoot {:+.1f}, dip {:.1f}, {} flame starts, water max {}, return avg {}".format(
+        "overshoot {:+.1f}, dip {:.1f}, {} flame starts".format(
             start, e["area"], e["target"], e["outdoor_avg"], e["rise_min"],
-            e["overshoot"], e["undershoot"], e["flame_starts"], e["water_peak"],
-            e.get("return_avg", "-"),
+            e["overshoot"], e["undershoot"], e["flame_starts"],
         )
     )

@@ -283,8 +283,7 @@ def _warmup_rates(episodes, room="Living Room"):
     return rates[-K_NIGHTS:]
 
 
-def predict(room_now, now_iso, forecast, nights, episodes, comfort_at, gas_before6=None, gas_after6=None,
-            room="Living Room", morning_target=MORNING_TARGET):
+def predict(room_now, now_iso, forecast, nights, episodes, comfort_at, room="Living Room", morning_target=MORNING_TARGET):
     """
     Evening prediction for the coming night. Returns a dict that is stored
     and compared with reality the next morning.
@@ -305,8 +304,6 @@ def predict(room_now, now_iso, forecast, nights, episodes, comfort_at, gas_befor
         "warmup_band": None,
         "suggested_start": None,
         "outdoor_min": min([t for _, t in forecast if t is not None], default=None),
-        "gas_before6": gas_before6,
-        "gas_after6": gas_after6,
         "morning_target": morning_target,
     }
     if k is None or room_now is None or out["outdoor_min"] is None:
@@ -366,6 +363,4 @@ def prediction_line(p):
             "outside band " + p["warmup_band"] if p.get("warmup_band") else "all mornings")
     else:
         line += "; warm-up time still learning ({}/{} mornings)".format(p["warmups_used"], MIN_WARMUPS)
-    if p["gas_before6"] is not None and p["gas_after6"] is not None:
-        line += "; gas before/after 06:00 {:.3f}/{:.3f}".format(p["gas_before6"], p["gas_after6"])
     return line

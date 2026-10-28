@@ -71,19 +71,13 @@ CONF_EXP_GAS: Final = "exp_gas"
 CONF_EXP_FLAME: Final = "exp_flame"
 CONF_EXP_DHW: Final = "exp_dhw"
 CONF_EXP_CH_ACTIVE: Final = "exp_ch_active"
-CONF_EXP_WATER: Final = "exp_water"
-CONF_EXP_RETURN: Final = "exp_return"
 CONF_EXP_PEOPLE: Final = "exp_people"
 CONF_EXP_KP: Final = "exp_kp"
 CONF_EXP_KI: Final = "exp_ki"
 CONF_EXP_KD: Final = "exp_kd"
-CONF_EXP_INTEGRAL: Final = "exp_integral"
-CONF_EXP_GAS_BEFORE6: Final = "exp_gas_price_before6"
-CONF_EXP_GAS_AFTER6: Final = "exp_gas_price_after6"
 EXP_ENTITY_KEYS: Final = (
     CONF_EXP_OUTDOOR, CONF_EXP_WEATHER, CONF_EXP_GAS, CONF_EXP_FLAME, CONF_EXP_DHW,
-    CONF_EXP_CH_ACTIVE, CONF_EXP_WATER, CONF_EXP_RETURN, CONF_EXP_PEOPLE, CONF_EXP_KP,
-    CONF_EXP_KI, CONF_EXP_KD, CONF_EXP_INTEGRAL, CONF_EXP_GAS_BEFORE6, CONF_EXP_GAS_AFTER6,
+    CONF_EXP_CH_ACTIVE, CONF_EXP_PEOPLE, CONF_EXP_KP, CONF_EXP_KI, CONF_EXP_KD,
 )
 DEFAULT_COMFORT_WEEKDAY: Final = "07:30:00"
 DEFAULT_COMFORT_WEEKEND: Final = "08:00:00"

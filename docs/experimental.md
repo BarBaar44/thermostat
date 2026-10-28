@@ -65,11 +65,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 | Burner flame | ○ (hot-water split) | | ○ (short-cycling check) |
 | Hot water active | ○ (hot-water split) | | ○ (skips hot-water disturbed warm-ups) |
 | Central heating active | ○ (hot-water split) | | |
-| Flow water temperature | | | ○ |
-| Return water temperature | | | ○ |
 | PID Kp, Ki, Kd | | | ✔ for advice (all three) |
-| PID integral | | | ○ |
-| Gas price before / after 06:00 | | ○ | |
 
 **A sensible start for most houses:** outdoor temperature, weather forecast and gas meter. That gives you gas per degree-day and the night model. The boiler fields only make sense with a smart (OpenTherm) boiler connection; the PID fields only with an ESPHome style PID.
 
@@ -137,33 +133,12 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 
   **Note:** the hot-water split uses a fixed rate of 0.019 m³ of gas per burner minute, measured on one boiler (about 11 kW on hot water). With a different boiler the split will be off until this becomes a setting.
 
-### Flow water temperature, Return water temperature
-
-- **What:** two sensors in °C. *Flow* is the water leaving the boiler towards the radiators, *return* is the water coming back.
-- **Why:** recorded with each warm-up and shown in the report (highest flow, average return), so you can see how hard the boiler worked. A condensing boiler is most efficient when the return water stays below about 55 °C: then it recovers extra heat from its exhaust.
-- **Required:** no. They do not affect the advice.
-- **Where from:** the same sources as the flame sensors: OpenTherm Gateway, ESPHome OpenTherm, DIYLess.
-
 ### PID Kp, PID Ki, PID Kd
 
 - **What:** the three tuning values of the PID controller in your boiler firmware that decides the flow temperature. Roughly: **Kp** reacts to how far the room is below target, **Ki** to how long it has been below, **Kd** to how fast the temperature changes.
 - **Why:** the PID advice suggests a better value for one of these. It needs to know the current values to suggest a change, and it notices when you change one by hand so it can check whether the change helped.
 - **Required:** all three for advice. Without them warm-ups are still recorded and judged, but no advice is given.
 - **Where from:** an ESPHome firmware with a PID climate, where the values are exposed as **number** entities (or kept in **input_number** helpers that match what you flashed). The advice limits (Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000) fit an ESPHome PID driving an OpenTherm flow temperature. **If your boiler has no such PID, leave these empty**: the advice would not make sense for it.
-
-### PID integral
-
-- **What:** a sensor with the PID's integral term: the part of its output built up from how long the room has been below target.
-- **Why:** recorded with each warm-up (lowest and highest value) to help explain an overshoot: an integral that keeps building up is a classic cause.
-- **Required:** no. It does not affect the advice.
-- **Where from:** ESPHome's PID climate can publish it as a sensor (`type: INTEGRAL`). ESPHome reports it as a percentage (times 100); the integration divides it by 100.
-
-### Gas price tomorrow before 06:00 / after 06:00
-
-- **What:** two sensors with the gas price for tomorrow, before and after 06:00.
-- **Why:** dynamic gas contracts change price at 06:00. The prices are shown next to the night prediction, so you can see whether starting the heating a bit earlier would be cheaper. Nothing is calculated with them yet.
-- **Required:** no, purely informational.
-- **Where from:** an integration for a dynamic energy contract, such as Frank Energie, Zonneplan, Tibber or EnergyZero. These usually give the current price or a list of prices; you may need a template sensor to pick tomorrow's price before and after 06:00.
 
 ## Gas per degree-day
 
@@ -193,7 +168,7 @@ At 21:00 it takes the hourly forecast and predicts the room temperature at your 
 
 **Question it answers:** is the boiler's PID loop tuned well for this house?
 
-Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, flow and return temperature, outdoor temperature and the gas meter. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops).
+Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, outdoor temperature and the gas meter. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops).
 
 Each episode is judged on time to target (more than 60 minutes is slow), overshoot (more than 0.4 °C), the dip below target afterwards (more than 0.4 °C) and flame starts per hour (more than 6 is short-cycling).
 
