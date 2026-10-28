@@ -65,6 +65,8 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 | Burner flame | ○ (hot-water split) | | ○ (short-cycling check) |
 | Hot water active | ○ (hot-water split) | | ○ (skips hot-water disturbed warm-ups) |
 | Central heating active | ○ (hot-water split) | | |
+| Flow water temperature | | | ○ (shown in the report) |
+| Return water temperature | | | ○ (shown in the report) |
 | PID Kp, Ki, Kd | | | ✔ for advice (all three) |
 | Gas price before / after 06:00 | | ○ | |
 
@@ -134,6 +136,13 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 
   **Note:** the hot-water split uses a fixed rate of 0.019 m³ of gas per burner minute, measured on one boiler (about 11 kW on hot water). With a different boiler the split will be off until this becomes a setting.
 
+### Flow water temperature, Return water temperature
+
+- **What:** two sensors in °C. *Flow* is the water leaving the boiler towards the radiators, *return* is the water coming back.
+- **Why:** recorded with each warm-up and shown in the report (highest flow, average return), so you can see how hard the boiler worked. A condensing boiler is most efficient when the return water stays below about 55 °C: then it recovers extra heat from its exhaust.
+- **Required:** no. They do not affect the advice.
+- **Where from:** the same sources as the flame sensors: OpenTherm Gateway, ESPHome OpenTherm, DIYLess.
+
 ### PID Kp, PID Ki, PID Kd
 
 - **What:** the three tuning values of the PID controller in your boiler firmware that decides the flow temperature. Roughly: **Kp** reacts to how far the room is below target, **Ki** to how long it has been below, **Kd** to how fast the temperature changes.
@@ -176,7 +185,7 @@ At 21:00 it takes the hourly forecast and predicts the room temperature at your 
 
 **Question it answers:** is the boiler's PID loop tuned well for this house?
 
-Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, outdoor temperature and the gas meter. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops).
+Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, flow and return temperature, outdoor temperature and the gas meter. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops).
 
 Each episode is judged on time to target (more than 60 minutes is slow), overshoot (more than 0.4 °C), the dip below target afterwards (more than 0.4 °C) and flame starts per hour (more than 6 is short-cycling).
 

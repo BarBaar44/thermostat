@@ -82,6 +82,8 @@
           "exp_flame": "Burner flame",
           "exp_dhw": "Hot water active",
           "exp_ch_active": "Central heating active",
+          "exp_water": "Flow water temperature",
+          "exp_return": "Return water temperature",
           "exp_kp": "PID Kp",
           "exp_ki": "PID Ki",
           "exp_kd": "PID Kd",
