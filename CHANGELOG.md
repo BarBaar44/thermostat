@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Integration icon:** the integration now ships its own icon (`brand/`), shown on the integrations page. Source: [docs/icon.svg](docs/icon.svg).
+
 ## 1.0.0
 
 First release of **Cloudless Multiroom Thermostat**, the Home Assistant integration that replaces the YAML setup in this repo.

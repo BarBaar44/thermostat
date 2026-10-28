@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="arc" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2f80c4"/>
+      <stop offset="0.55" stop-color="#f2a33a"/>
+      <stop offset="1" stop-color="#e2502c"/>
+    </linearGradient>
+  </defs>
+  <!-- dial body -->
+  <circle cx="256" cy="256" r="255" fill="#26313d"/>
+  <!-- setpoint arc, 270 degrees from bottom left to bottom right -->
+  <path d="M 112.7 399.3 A 202.7 202.7 0 1 1 399.3 399.3" fill="none" stroke="#3a4754" stroke-width="34" stroke-linecap="round"/>
+  <path d="M 112.7 399.3 A 202.7 202.7 0 1 1 399.3 399.3" fill="none" stroke="url(#arc)" stroke-width="34" stroke-linecap="round"/>
+  <!-- house split into rooms -->
+  <path d="M 256 130 L 376 226 L 376 362 Q 376 374 364 374 L 148 374 Q 136 374 136 362 L 136 226 Z" fill="#f4f1ec" stroke="#f4f1ec" stroke-width="10" stroke-linejoin="round"/>
+  <rect x="166" y="244" width="78" height="52" rx="8" fill="#f2a33a"/>
+  <rect x="268" y="244" width="78" height="52" rx="8" fill="#e2502c"/>
+  <rect x="166" y="310" width="78" height="46" rx="8" fill="#2f80c4"/>
+  <rect x="268" y="310" width="78" height="46" rx="8" fill="#f2a33a"/>
+</svg>
