@@ -45,6 +45,8 @@ from ..const import (
     CONF_EXP_DHW,
     CONF_EXP_FLAME,
     CONF_EXP_GAS,
+    CONF_EXP_GAS_AFTER6,
+    CONF_EXP_GAS_BEFORE6,
     CONF_EXP_KD,
     CONF_EXP_KI,
     CONF_EXP_KP,
@@ -447,6 +449,8 @@ class ExperimentalRunner:
             await self._io(store.read_episodes, self.f_nights),
             await self._io(store.read_episodes, self.f_episodes),
             self._comfort_at(now).isoformat(timespec="seconds"),
+            self._float(CONF_EXP_GAS_BEFORE6),
+            self._float(CONF_EXP_GAS_AFTER6),
             room=room.name,
             morning_target=room.warm_temp,
         )
@@ -465,6 +469,8 @@ class ExperimentalRunner:
                 "outdoor_min": prediction["outdoor_min"],
                 "nights_used": prediction["nights_used"],
                 "warmups_used": prediction["warmups_used"],
+                "gas_before6": prediction["gas_before6"],
+                "gas_after6": prediction["gas_after6"],
             },
         )
         return prediction

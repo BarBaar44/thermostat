@@ -30,6 +30,8 @@ from .const import (
     CONF_EXP_DHW,
     CONF_EXP_FLAME,
     CONF_EXP_GAS,
+    CONF_EXP_GAS_AFTER6,
+    CONF_EXP_GAS_BEFORE6,
     CONF_EXP_KD,
     CONF_EXP_KI,
     CONF_EXP_KP,
@@ -228,6 +230,8 @@ def experimental_schema(rooms: dict[str, str]) -> vol.Schema:
             vol.Optional(CONF_EXP_KP): _entities(["number", "input_number"]),
             vol.Optional(CONF_EXP_KI): _entities(["number", "input_number"]),
             vol.Optional(CONF_EXP_KD): _entities(["number", "input_number"]),
+            vol.Optional(CONF_EXP_GAS_BEFORE6): _entities("sensor"),
+            vol.Optional(CONF_EXP_GAS_AFTER6): _entities("sensor"),
         }
     )
     return vol.Schema(fields)

@@ -84,7 +84,9 @@
           "exp_ch_active": "Central heating active",
           "exp_kp": "PID Kp",
           "exp_ki": "PID Ki",
-          "exp_kd": "PID Kd"
+          "exp_kd": "PID Kd",
+          "exp_gas_price_before6": "Gas price tomorrow before 06:00",
+          "exp_gas_price_after6": "Gas price tomorrow after 06:00"
         },
         "data_description": {
           "exp_room": "Warm-up advice and the night model follow this room. Its warm temperature is the morning target.",
@@ -94,7 +96,8 @@
           "exp_people": "zone.home or a count sensor. Days nobody was home are left out of the gas figures.",
           "exp_gas": "Total gas meter (m³), with long-term statistics.",
           "exp_flame": "With hot water active and central heating active: splits each day's gas into hot water and heating.",
-          "exp_kp": "Kp, Ki and Kd of a firmware PID (for example ESPHome). With all three set, warm-ups get tuning advice."
+          "exp_kp": "Kp, Ki and Kd of a firmware PID (for example ESPHome). With all three set, warm-ups get tuning advice.",
+          "exp_gas_price_before6": "Optional, shown next to the night prediction (for example Frank Energie)."
         }
       }
     }

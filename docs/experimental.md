@@ -66,6 +66,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 | Hot water active | ○ (hot-water split) | | ○ (skips hot-water disturbed warm-ups) |
 | Central heating active | ○ (hot-water split) | | |
 | PID Kp, Ki, Kd | | | ✔ for advice (all three) |
+| Gas price before / after 06:00 | | ○ | |
 
 **A sensible start for most houses:** outdoor temperature, weather forecast and gas meter. That gives you gas per degree-day and the night model. The boiler fields only make sense with a smart (OpenTherm) boiler connection; the PID fields only with an ESPHome style PID.
 
@@ -139,6 +140,13 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 - **Why:** the PID advice suggests a better value for one of these. It needs to know the current values to suggest a change, and it notices when you change one by hand so it can check whether the change helped.
 - **Required:** all three for advice. Without them warm-ups are still recorded and judged, but no advice is given.
 - **Where from:** an ESPHome firmware with a PID climate, where the values are exposed as **number** entities (or kept in **input_number** helpers that match what you flashed). The advice limits (Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000) fit an ESPHome PID driving an OpenTherm flow temperature. **If your boiler has no such PID, leave these empty**: the advice would not make sense for it.
+
+### Gas price tomorrow before 06:00 / after 06:00
+
+- **What:** two sensors with the gas price for tomorrow, before and after 06:00.
+- **Why:** dynamic gas contracts change price at 06:00. The prices are shown next to the night prediction, so you can see whether starting the heating a bit earlier would be cheaper. Nothing is calculated with them yet.
+- **Required:** no, purely informational.
+- **Where from:** an integration for a dynamic energy contract, such as Frank Energie, Zonneplan, Tibber or EnergyZero. These usually give the current price or a list of prices; you may need a template sensor to pick tomorrow's price before and after 06:00.
 
 ## Gas per degree-day
 
