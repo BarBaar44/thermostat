@@ -28,6 +28,7 @@ from .const import (
     CONF_EXP_COMFORT_WEEKDAY,
     CONF_EXP_COMFORT_WEEKEND,
     CONF_EXP_DHW,
+    CONF_EXP_DHW_RATE,
     CONF_EXP_FLAME,
     CONF_EXP_GAS,
     CONF_EXP_GAS_AFTER6,
@@ -65,6 +66,7 @@ from .const import (
     DEFAULT_BUFFER,
     DEFAULT_DRIVES_SOURCE,
     DEFAULT_COMFORT_WEEKDAY,
+    DEFAULT_DHW_RATE,
     DEFAULT_COMFORT_WEEKEND,
     DEFAULT_ECO_TEMP,
     DEFAULT_HEARTBEAT_MIN,
@@ -230,6 +232,12 @@ def experimental_schema(rooms: dict[str, str]) -> vol.Schema:
             vol.Optional(CONF_EXP_FLAME): _entities("binary_sensor"),
             vol.Optional(CONF_EXP_DHW): _entities("binary_sensor"),
             vol.Optional(CONF_EXP_CH_ACTIVE): _entities("binary_sensor"),
+            vol.Required(CONF_EXP_DHW_RATE, default=DEFAULT_DHW_RATE): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.001, max=0.1, step=0.001, mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="m³/min",
+                )
+            ),
             vol.Optional(CONF_EXP_WATER): _entities("sensor"),
             vol.Optional(CONF_EXP_RETURN): _entities("sensor"),
             vol.Optional(CONF_EXP_KP): _entities(["number", "input_number"]),
@@ -270,7 +278,9 @@ class SettingsOptionsFlow(OptionsFlow):
                 options.setdefault(key, None)
             # Keep the experimental settings while switched off, so switching
             # back on remembers them
-            for key in (CONF_EXP_ROOM, CONF_EXP_COMFORT_WEEKDAY, CONF_EXP_COMFORT_WEEKEND, *EXP_ENTITY_KEYS):
+            for key in (
+                CONF_EXP_ROOM, CONF_EXP_COMFORT_WEEKDAY, CONF_EXP_COMFORT_WEEKEND, CONF_EXP_DHW_RATE, *EXP_ENTITY_KEYS
+            ):
                 if key in current:
                     options[key] = current[key]
             self._options = options

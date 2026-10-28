@@ -71,6 +71,7 @@ CONF_EXP_GAS: Final = "exp_gas"
 CONF_EXP_FLAME: Final = "exp_flame"
 CONF_EXP_DHW: Final = "exp_dhw"
 CONF_EXP_CH_ACTIVE: Final = "exp_ch_active"
+CONF_EXP_DHW_RATE: Final = "exp_dhw_rate"  # m³ of gas per burner minute on hot water
 CONF_EXP_WATER: Final = "exp_water"
 CONF_EXP_RETURN: Final = "exp_return"
 CONF_EXP_PEOPLE: Final = "exp_people"
@@ -87,6 +88,7 @@ EXP_ENTITY_KEYS: Final = (
 )
 DEFAULT_COMFORT_WEEKDAY: Final = "07:30:00"
 DEFAULT_COMFORT_WEEKEND: Final = "08:00:00"
+DEFAULT_DHW_RATE: Final = 0.019  # measured on one boiler, about 11 kW on hot water
 EXP_SUMMARY_HOUR: Final = 21  # fixed: the night model measures the evening drop from 21:00
 SERVICE_EXPERIMENTAL_REPORT: Final = "experimental_report"
 DOCS_EXPERIMENTAL_URL: Final = (

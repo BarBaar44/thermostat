@@ -43,6 +43,7 @@ from ..const import (
     CONF_EXP_COMFORT_WEEKDAY,
     CONF_EXP_COMFORT_WEEKEND,
     CONF_EXP_DHW,
+    CONF_EXP_DHW_RATE,
     CONF_EXP_FLAME,
     CONF_EXP_GAS,
     CONF_EXP_GAS_AFTER6,
@@ -59,6 +60,7 @@ from ..const import (
     CONF_EXP_WEATHER,
     DEFAULT_COMFORT_WEEKDAY,
     DEFAULT_COMFORT_WEEKEND,
+    DEFAULT_DHW_RATE,
     DOCS_EXPERIMENTAL_URL,
     DOMAIN,
     EXP_SUMMARY_HOUR,
@@ -552,6 +554,7 @@ class ExperimentalRunner:
             flag = {"date": date, "away": self._away(people, date)}
             await self._io(store.append_episode, self.f_gas_days, flag)
 
+        dhw_rate = _num(self._s.get(CONF_EXP_DHW_RATE)) or DEFAULT_DHW_RATE
         for date in dates:
             hours = []
             for r in stats.get(gas_id, []):
@@ -570,7 +573,7 @@ class ExperimentalRunner:
             if len(hours) < 23:  # 23 on the spring DST day
                 _LOGGER.debug("%d gas hours for %s, not split", len(hours), date)
                 continue
-            split = gas_core.split_day(hours)
+            split = gas_core.split_day(hours, dhw_rate)
             gas = sum(max(h["gas"] or 0.0, 0.0) for h in hours)
             if split["flame_min"] == 0 and gas > 0.05:
                 _LOGGER.warning("No burner history for %s, gas not split", date)

@@ -125,6 +125,7 @@ async def test_options_enable_experimental(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert entry.options["exp_gas"] == "sensor.gas" and entry.options["exp_flame"] is None
+    assert entry.options["exp_dhw_rate"] == pytest.approx(0.019)
     assert entry.runtime_data.experimental is not None
     for name in ("gas_per_degree_day", "night_prediction", "last_warm_up_overshoot", "pid_advice"):
         assert hass.states.get(f"sensor.heating_{name}") is not None, name
@@ -146,6 +147,7 @@ async def test_options_enable_experimental(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     assert entry.runtime_data.experimental is None
     assert entry.options["exp_gas"] == "sensor.gas" and entry.options["exp_comfort_weekday"] == "07:00:00"
+    assert entry.options["exp_dhw_rate"] == pytest.approx(0.019)
 
 
 async def test_warm_up_episode_recorded(hass: HomeAssistant) -> None:
@@ -265,6 +267,7 @@ async def test_gas_split_from_recorder_data(hass: HomeAssistant) -> None:
     assert day["heating_gas"] == pytest.approx(0.6, abs=0.001)
     assert day["dhw_gas"] == pytest.approx(0.05, abs=0.001)
     assert day["ch_min"] == 180 and day["flame_min"] == 190
+    assert day["dhw_rate"] == pytest.approx(0.019)
 
 
 async def test_report_notification(hass: HomeAssistant) -> None:
@@ -313,3 +316,17 @@ async def test_evening_prediction_uses_forecast(hass: HomeAssistant) -> None:
     saved = json.load(open(runner.f_night_state, encoding="utf-8"))
     assert saved["prediction"]["morning_target"] == 19.0  # the room's warm temperature
     assert "Tonight" in created[0]
+
+
+def test_split_day_uses_dhw_rate() -> None:
+    """In a heating hour the hot-water part is its hot-water minutes at the given rate."""
+    from custom_components.cloudless_multiroom_thermostat.experimental import gas_core
+
+    hours = [{"gas": 1.0, "ch": 60, "dhw": 10, "flame": 60}]
+    default = gas_core.split_day(hours)
+    assert default["dhw_gas"] == pytest.approx(0.19) and default["dhw_rate"] == 0.019
+    custom = gas_core.split_day(hours, 0.025)
+    assert custom["dhw_gas"] == pytest.approx(0.25) and custom["heating_gas"] == pytest.approx(0.75)
+    assert custom["dhw_rate"] == 0.025
+    # never more hot water than the hour burned
+    assert gas_core.split_day(hours, 0.5)["dhw_gas"] == pytest.approx(1.0)

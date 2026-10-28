@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Hot water gas rate is a setting:** the rate the hot-water split uses (m³ of gas per burner minute on hot water) is now on the experimental settings page instead of a fixed 0.019. Default unchanged, so nothing changes until you set it. Only days split after a change use the new value; each split day now stores the rate it used. How to measure it: [docs/experimental.md](docs/experimental.md#hot-water-gas-rate).
 - **Docs:** [docs/experimental.md](docs/experimental.md) now explains every entity on the experimental settings page: what it is, why it's needed, whether it's required and where to get it.
 - **Removed the legacy YAML setup and the pyscript tuner** (`automations/`, `scripts/`, `sensors/`, `deltaTemperature`, `housewarming.yaml`, `pyscript/`). The integration replaces them; they're still in the [v1.1.0 tag](https://github.com/BarBaar44/thermostat/tree/v1.1.0) for reference and for carrying tuner history over.
 

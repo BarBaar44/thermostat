@@ -40,7 +40,7 @@ BASE_MAX_DD = 0.5      # days at or below this count as "no heating" for the bas
 MIN_BASE_DAYS = 5      # need this many no-heating days for a base estimate
 MIN_WINDOW_DD = 5.0    # a window needs this many degree-days for a value
 MAX_DAY_GAS = 20.0     # m3; larger daily changes are meter glitches
-DHW_RATE = 0.019       # m3 per burner-minute on hot water (measured 2026-10, ~11 kW)
+DHW_RATE = 0.019       # default m3 per burner-minute on hot water (measured 2026-10, ~11 kW)
 BASE_RECENT_DAYS = 28  # measured base: median of this many latest split days
 
 
@@ -82,14 +82,15 @@ def nobody_home(changes, start, end):
     return seen
 
 
-def split_day(hours):
+def split_day(hours, dhw_rate=DHW_RATE):
     """
     Split one day's gas into hot water and heating. `hours` is a list of
     {"gas": m3, "ch": min, "dhw": min, "flame": min} per hour: minutes with
     heating demand, with hot water active and with the burner on.
 
     An hour without heating demand burned only for hot water. In an hour with
-    heating demand the hot-water part is its hot-water minutes at DHW_RATE.
+    heating demand the hot-water part is its hot-water minutes at `dhw_rate`
+    (m3 per burner-minute, a setting; DHW_RATE when not set).
     Gas in an hour without any burner or heating time is meter lag and goes
     with the hour before.
     """
@@ -102,7 +103,7 @@ def split_day(hours):
         else:
             heating_hour = h["ch"] > 0
         if heating_hour:
-            part = min(h["dhw"] * DHW_RATE, gas)
+            part = min(h["dhw"] * dhw_rate, gas)
             dhw += part
             heating += gas - part
         else:
@@ -111,7 +112,8 @@ def split_day(hours):
     return {"dhw_gas": round(dhw, 3), "heating_gas": round(heating, 3),
             "ch_min": round(sum([h["ch"] for h in hours])),
             "dhw_min": round(sum([h["dhw"] for h in hours])),
-            "flame_min": round(sum([h["flame"] for h in hours]))}
+            "flame_min": round(sum([h["flame"] for h in hours])),
+            "dhw_rate": dhw_rate}
 
 
 def build_days(gas_by_date, outdoor_by_date, today, split_by_date=None):
