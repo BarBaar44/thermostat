@@ -40,8 +40,12 @@ BASE_MAX_DD = 0.5      # days at or below this count as "no heating" for the bas
 MIN_BASE_DAYS = 5      # need this many no-heating days for a base estimate
 MIN_WINDOW_DD = 5.0    # a window needs this many degree-days for a value
 MAX_DAY_GAS = 20.0     # m3; larger daily changes are meter glitches
-DHW_RATE = 0.019       # m3 per burner-minute on hot water (measured 2026-10, ~11 kW)
+DHW_RATE = 0.019       # m3 per hot-water minute until measured (one boiler, 2026-10, ~11 kW)
 BASE_RECENT_DAYS = 28  # measured base: median of this many latest split days
+RATE_MIN_DRAW = 3.0    # hot-water minutes a draw needs to count for the measured rate
+RATE_MIN_MINUTES = 60  # measured rate needs this many hot-water minutes in total
+RATE_RECENT_DAYS = 60  # measured rate: samples from this many latest split days
+RATE_RANGE = (0.005, 0.06)  # m3/min; a measured rate outside this is ignored
 
 
 def degree_days(outdoor_mean):
@@ -82,14 +86,15 @@ def nobody_home(changes, start, end):
     return seen
 
 
-def split_day(hours):
+def split_day(hours, dhw_rate=DHW_RATE):
     """
     Split one day's gas into hot water and heating. `hours` is a list of
     {"gas": m3, "ch": min, "dhw": min, "flame": min} per hour: minutes with
     heating demand, with hot water active and with the burner on.
 
     An hour without heating demand burned only for hot water. In an hour with
-    heating demand the hot-water part is its hot-water minutes at DHW_RATE.
+    heating demand the hot-water part is its hot-water minutes at `dhw_rate`
+    (m3 per hot-water minute: the setting, the measured rate or DHW_RATE).
     Gas in an hour without any burner or heating time is meter lag and goes
     with the hour before.
     """
@@ -102,16 +107,70 @@ def split_day(hours):
         else:
             heating_hour = h["ch"] > 0
         if heating_hour:
-            part = min(h["dhw"] * DHW_RATE, gas)
+            part = min(h["dhw"] * dhw_rate, gas)
             dhw += part
             heating += gas - part
         else:
             dhw += gas
         previous_heating = heating_hour
+    rate_gas, rate_min = rate_sample(hours)
     return {"dhw_gas": round(dhw, 3), "heating_gas": round(heating, 3),
             "ch_min": round(sum([h["ch"] for h in hours])),
             "dhw_min": round(sum([h["dhw"] for h in hours])),
-            "flame_min": round(sum([h["flame"] for h in hours]))}
+            "flame_min": round(sum([h["flame"] for h in hours])),
+            "dhw_rate": dhw_rate, "rate_gas": round(rate_gas, 3), "rate_min": round(rate_min, 1)}
+
+
+def rate_sample(hours):
+    """
+    Gas and hot-water minutes of the draws in one day that can measure the
+    hot water gas rate: (gas m3, minutes).
+
+    A draw is a run of hours with burner or hot-water time and no heating
+    demand. It counts only with a quiet hour (no heating, no burner, no hot
+    water) on both sides, so no heating gas leaks in and gas the meter reports
+    an hour late still lands in the quiet hour after it, which is included.
+    Draws under RATE_MIN_DRAW minutes (washing hands) are too noisy and left out.
+    """
+    def quiet(h):
+        return h["ch"] == 0 and h["flame"] == 0 and h["dhw"] == 0
+
+    gas = minutes = 0.0
+    i = 1
+    while i < len(hours) - 1:
+        if quiet(hours[i]) or not quiet(hours[i - 1]):
+            i += 1
+            continue
+        j = i
+        while j < len(hours) and not quiet(hours[j]) and hours[j]["ch"] == 0:
+            j += 1
+        # hours[i:j] is the draw; hours[j] must be the quiet hour after it
+        if j < len(hours) and quiet(hours[j]):
+            draw = sum(h["dhw"] for h in hours[i:j])
+            if draw >= RATE_MIN_DRAW:
+                gas += sum(max(h["gas"] or 0.0, 0.0) for h in hours[i:j + 1])
+                minutes += draw
+        i = j + 1
+    return gas, minutes
+
+
+def measured_rate(split_by_date):
+    """
+    Hot water gas rate measured from the stored split days: total draw gas over
+    total draw minutes of the latest RATE_RECENT_DAYS days with samples.
+    Returns (rate or None, minutes); None until RATE_MIN_MINUTES are collected
+    or when the result is implausible.
+    """
+    days = [split_by_date[d] for d in sorted(split_by_date) if split_by_date[d].get("rate_min")]
+    days = days[-RATE_RECENT_DAYS:]
+    gas = sum(d["rate_gas"] for d in days)
+    minutes = sum(d["rate_min"] for d in days)
+    if minutes < RATE_MIN_MINUTES:
+        return None, round(minutes)
+    rate = gas / minutes
+    if not RATE_RANGE[0] <= rate <= RATE_RANGE[1]:
+        return None, round(minutes)
+    return round(rate, 4), round(minutes)
 
 
 def build_days(gas_by_date, outdoor_by_date, today, split_by_date=None):
@@ -219,4 +278,16 @@ def summary_line(s):
     if s["away_28"]:
         line += "; {} away day{} in the last 28 left out".format(
             s["away_28"], "" if s["away_28"] == 1 else "s")
-    return line
+    return line + rate_line(s.get("rate"))
+
+
+def rate_line(rate):
+    """Which hot water gas rate the split uses, for the daily notification."""
+    if not rate:
+        return ""
+    if rate["source"] == "setting":
+        return "; hot water rate {:.4f} m3/min (setting)".format(rate["rate"])
+    if rate["source"] == "measured":
+        return "; hot water rate {:.4f} m3/min measured over {} min".format(rate["rate"], rate["minutes"])
+    return "; hot water rate {:.4f} m3/min default, measuring ({}/{} min)".format(
+        rate["rate"], rate["minutes"], RATE_MIN_MINUTES)

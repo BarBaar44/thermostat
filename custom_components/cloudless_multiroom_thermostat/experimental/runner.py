@@ -43,6 +43,7 @@ from ..const import (
     CONF_EXP_COMFORT_WEEKDAY,
     CONF_EXP_COMFORT_WEEKEND,
     CONF_EXP_DHW,
+    CONF_EXP_DHW_RATE,
     CONF_EXP_FLAME,
     CONF_EXP_GAS,
     CONF_EXP_GAS_AFTER6,
@@ -59,6 +60,7 @@ from ..const import (
     CONF_EXP_WEATHER,
     DEFAULT_COMFORT_WEEKDAY,
     DEFAULT_COMFORT_WEEKEND,
+    DEFAULT_DHW_RATE,
     DOCS_EXPERIMENTAL_URL,
     DOMAIN,
     EXP_SUMMARY_HOUR,
@@ -491,6 +493,16 @@ class ExperimentalRunner:
             days.setdefault(d["date"], {}).update(d)
         return days
 
+    def _dhw_rate(self, stored: dict[str, dict[str, Any]]) -> dict[str, Any]:
+        """The hot water gas rate for the split: the setting, else measured, else the default."""
+        setting = _num(self._s.get(CONF_EXP_DHW_RATE))
+        measured, minutes = gas_core.measured_rate(stored)
+        if setting:
+            return {"rate": setting, "source": "setting", "minutes": minutes}
+        if measured:
+            return {"rate": measured, "source": "measured", "minutes": minutes}
+        return {"rate": DEFAULT_DHW_RATE, "source": "default", "minutes": minutes}
+
     async def _async_statistics(
         self, ids: set[str], start: datetime, end: datetime | None, period: str, types: set[str]
     ) -> dict[str, list[dict[str, Any]]]:
@@ -552,6 +564,7 @@ class ExperimentalRunner:
             flag = {"date": date, "away": self._away(people, date)}
             await self._io(store.append_episode, self.f_gas_days, flag)
 
+        rate = self._dhw_rate(stored)
         for date in dates:
             hours = []
             for r in stats.get(gas_id, []):
@@ -570,7 +583,8 @@ class ExperimentalRunner:
             if len(hours) < 23:  # 23 on the spring DST day
                 _LOGGER.debug("%d gas hours for %s, not split", len(hours), date)
                 continue
-            split = gas_core.split_day(hours)
+            split = gas_core.split_day(hours, rate["rate"])
+            split["dhw_rate_source"] = rate["source"]
             gas = sum(max(h["gas"] or 0.0, 0.0) for h in hours)
             if split["flame_min"] == 0 and gas > 0.05:
                 _LOGGER.warning("No burner history for %s, gas not split", date)
@@ -601,6 +615,8 @@ class ExperimentalRunner:
         outdoor = {_stat_date(r["start"]): r.get("mean") for r in stats.get(outdoor_id, [])}
         splits = await self._async_read_gas_days()
         s = gas_core.summary(gas_core.build_days(gas, outdoor, now.date().isoformat(), splits))
+        if all(self._entity(k) for k in (CONF_EXP_FLAME, CONF_EXP_DHW, CONF_EXP_CH_ACTIVE)):
+            s["rate"] = self._dhw_rate(splits)
         w7, w28 = s["w7"] or {}, s["w28"] or {}
         self._set(
             "gas_per_degree_day",
@@ -616,6 +632,8 @@ class ExperimentalRunner:
                 "base_source": s["base_source"],
                 "away_days_28": s["away_28"],
                 "last_day": s["last"],
+                "hot_water_rate": (s.get("rate") or {}).get("rate"),
+                "hot_water_rate_source": (s.get("rate") or {}).get("source"),
             },
         )
         return s

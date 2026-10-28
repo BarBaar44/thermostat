@@ -20,7 +20,7 @@ Each feature has a bar to clear. Until it does, it stays observe only. After it 
 
 | Feature | Stable when | Then it may |
 |---|---|---|
-| Gas per degree-day | A full year of data (so a whole heating season), and the hot-water rate is a setting instead of a constant | Serve as the official check for the other features |
+| Gas per degree-day | A full year of data (so a whole heating season), and with the boiler signals set, a measured (or set) hot-water rate | Serve as the official check for the other features |
 | Night cooldown model | At least 30 predicted nights spread over 3 or more outdoor bands, average error 0.3 °C or less, no night off by more than 0.6 °C | Optimum start: begin heating at the predicted time |
 | Warm-up episodes and PID advice | PID values changed by hand in at least 2 outdoor bands, each followed by 5 or more valid episodes of the followed room with less overshoot or a faster warm-up on average than the 5 before, and gas per degree-day not worse | Set the PID values per outdoor band (gain scheduling) |
 | Evening report | The features it reports on are stable | Stay as it is |
@@ -65,6 +65,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 | Burner flame | ○ (hot-water split) | | ○ (short-cycling check) |
 | Hot water active | ○ (hot-water split) | | ○ (skips hot-water disturbed warm-ups) |
 | Central heating active | ○ (hot-water split) | | |
+| Hot water gas rate | ○ (leave empty: measured) | | |
 | Flow water temperature | | | ○ |
 | Return water temperature | | | ○ |
 | PID Kp, Ki, Kd | | | ✔ for advice (all three) |
@@ -135,7 +136,16 @@ The settings page asks for a lot of entities. You do not need all of them: each 
   - some manufacturers' own integrations.
   A boiler switched by a simple relay (on/off) cannot report these.
 
-  **Note:** the hot-water split uses a fixed rate of 0.019 m³ of gas per burner minute, measured on one boiler (about 11 kW on hot water). With a different boiler the split will be off until this becomes a setting.
+### Hot water gas rate
+
+- **What:** how much gas the boiler burns per minute while it makes hot water, in m³ per minute. **Leave it empty**: the integration measures it.
+- **Why:** in an hour with both heating and hot water (a combi boiler takes turns: hot water interrupts heating), the hot-water part of that hour's gas is its hot-water minutes times this rate. With the wrong rate, gas shifts between hot water and heating, and gas per degree-day is off.
+- **How it is measured:** from draws outside heating hours. A draw counts when the hours on both sides had no heating, no burner and no hot water, so no heating gas leaks in and gas the meter reports an hour late is still caught. The rate is the draws' total gas over their total hot-water minutes, from the last 60 split days. Until 60 minutes are collected the split uses **0.019 m³/min** (measured on one boiler, about 11 kW on hot water). The evening report says which rate is in use and how many minutes it is based on; the gas per degree-day sensor has it as attributes.
+- **Short draws are left out.** A draw under 3 minutes of hot water (washing hands, a quick rinse) is too noisy: the meter's resolution and the boiler's start-up dominate. If your house mostly has short draws, collecting 60 minutes takes longer.
+- **Built and tested in one house** where the boiler's hot water only goes to the bathroom (the kitchen has its own supply). Where the kitchen and other taps also use the boiler, the measured rate mixes showers with lower-flow draws. That should still be the right average for the split, but it has not been checked.
+- **Required:** no. Only matters when burner flame, hot water active and central heating active are set.
+- **Setting it:** only to pin a value you measured yourself (gas meter change during a shower with the heating off, divided by the hot-water minutes). A set value always wins over the measured one.
+- **Changing it:** only days split after the change use the new rate. Days already split keep theirs, because Home Assistant keeps the boiler history for 7 days only. Each split day stores the rate it used and where it came from (`dhw_rate`, `dhw_rate_source` in `gas_days.jsonl`).
 
 ### Flow water temperature, Return water temperature
 
@@ -171,7 +181,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 
 Raw gas use per day mostly follows the weather, so it can't show that. The feature normalises it with **degree-days**: base 18 °C, so a day averaging 8 °C outside counts 10. It reports **heating gas per degree-day** over the last 7 days (the sensor value) and 28 days (an attribute). It reads Home Assistant's long-term statistics of the gas meter and the outdoor temperature, up to a year back, so it has values straight away. Single days are too noisy in mild weather (one shower more or less outweighs the heating), which is why only rolling values are reported.
 
-- **Hot water is split off per day.** When burner flame, hot water active and central heating active are set, each complete day is split into hot-water and heating gas from the hourly gas statistics and the boiler history. An hour without heating demand burned only for hot water. In an hour with heating demand, the hot-water part is its hot-water minutes at **0.019 m³ per burner minute**. That rate was measured on one boiler (about 11 kW on hot water); **with a different boiler the split will be off** until this becomes a setting. Home Assistant keeps that history for 7 days, so each split is stored as it is made. Days before the first split use a base estimate instead: the median measured hot-water gas, or the median gas on summer days without heating.
+- **Hot water is split off per day.** When burner flame, hot water active and central heating active are set, each complete day is split into hot-water and heating gas from the hourly gas statistics and the boiler history. An hour without heating demand burned only for hot water. In an hour with heating demand, the hot-water part is its hot-water minutes at the [hot water gas rate](#hot-water-gas-rate), which the integration measures from showers outside heating hours (0.019 m³ per minute until it has enough). Home Assistant keeps that history for 7 days, so each split is stored as it is made. Days before the first split use a base estimate instead: the median measured hot-water gas, or the median gas on summer days without heating.
 - **Days nobody was home are left out.** With **People at home** set (`zone.home` by default), a day counts as away only if nobody was home for the whole calendar day. The day you come back stays in: warming the house up again is real gas the trip cost.
 
 **Gas meter:** a total meter in m³ with long-term statistics (for example a P1 or HomeWizard gas meter). The sensor shows `unknown` until a 7-day window holds at least 5 degree-days.

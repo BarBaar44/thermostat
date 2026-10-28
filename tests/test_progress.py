@@ -28,8 +28,11 @@ def test_gas_progress() -> None:
     assert "not set up" in progress.gas_progress(None)["text"]
     p = progress.gas_progress({"days": 40, "first": "2026-09-14"})
     assert p["text"].startswith("Gas per degree-day: 40 of 365 days of data (since 2026-09-14)")
-    assert "constant" in p["text"]
-    assert not p["done"]
+    assert "rate" not in p["text"] and not p["done"]  # no boiler signals: no rate needed
+    p = progress.gas_progress({"days": 365, "rate": {"rate": 0.019, "source": "default", "minutes": 20}})
+    assert "still the default (20 of 60 minutes measured)" in p["text"] and not p["done"]
+    p = progress.gas_progress({"days": 365, "rate": {"rate": 0.021, "source": "measured", "minutes": 80}})
+    assert p["done"]
 
 
 def test_night_progress_counts_and_errors() -> None:
