@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Integration icon:** the integration now ships its own icon (`brand/`), shown on the integrations page. Source: [docs/icon.svg](docs/icon.svg).
+- **Fix:** renaming a room's climate or binary sensor entity ID made the entity disappear until the integration was reloaded. Room devices now link to the heating system device with `via_device_id`; the old `via_device` tuple is deprecated and raises when Home Assistant itself re-adds the entity.
+- **Fix:** the room area lookup (winning room area) uses `async_get_device_by_identifier`; `async_get_device` is deprecated since Home Assistant 2026.10.
+- **Tests:** run against Home Assistant 2026.10.0 (the minimum in `hacs.json`) on Python 3.14.
 - **Rooms that only heat along:** a new room option, **Drives the heat source** (default on). Turned off, the room never becomes the winner, never starts an on/off heat source and doesn't turn on the central heating enable switch, but its TRVs still get its target and open while another room drives the heat source. For a hallway or another space that cools much faster than the rooms around it. New role `waiting` while such a room is below target and nothing else needs heat.
 
 ## 1.0.0

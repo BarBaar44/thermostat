@@ -164,6 +164,7 @@ class HeatingController:
         self.winner = Winner(None, WINNER_OFF, self.off_temp, None, 0.0)
         self.present = True
         self.experimental: Any = None  # ExperimentalRunner when enabled in options
+        self.system_device_id: str | None = None  # set in async_setup_entry
         self._unsubs: list[CALLBACK_TYPE] = []
         self._sent: dict[str, tuple[Any, float]] = {}
         self._started = False
@@ -216,7 +217,9 @@ class HeatingController:
 
     def area_label(self, room: Room) -> str:
         """Area the user put the room's device in, else the room name (legacy sensor, card)."""
-        device = dr.async_get(self.hass).async_get_device(identifiers={(DOMAIN, room.room_id)})
+        device = dr.async_get(self.hass).async_get_device_by_identifier(
+            (DOMAIN, room.room_id), self.entry.entry_id
+        )
         if device is not None and device.area_id:
             area = ar.async_get(self.hass).async_get_area(device.area_id)
             if area:
