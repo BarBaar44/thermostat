@@ -2,7 +2,7 @@
 
 Cloudless Multiroom Thermostat has a set of **observe-only** diagnostics. They record how the house and the boiler behave and report what they *would* change. **Nothing here changes the heating**: no setpoints, no PID values, no schedule.
 
-They are off by default. To switch them on: **Settings > Devices & services > Cloudless Multiroom Thermostat > Configure**, tick **Enable experimental features**, then fill in the entities on the next page. Every entity is optional; each feature runs as soon as the entities it needs are set.
+They are off by default. To switch them on: **Settings > Devices & services > Cloudless Multiroom Thermostat > Configure**, tick **Enable experimental features**, then fill in the entities on the next page. Every entity is optional; each feature runs as soon as the entities it needs are set. [The entities on the settings page](#the-entities-on-the-settings-page) explains each one and where to get it.
 
 ## What this is for
 
@@ -35,7 +35,7 @@ The [evening report](#evening-report) shows where each feature stands against th
 |---|---|---|---|
 | [Gas per degree-day](#gas-per-degree-day) | **Beta**: running daily since October 2026, the figures are usable for comparing weeks | Gas meter, outdoor temperature. For the hot-water split also burner flame, hot water active, central heating active. Optional: people at home | `sensor.<system>_gas_per_degree_day` |
 | [Night cooldown model](#night-cooldown-model) | **Alpha**: still learning; first back-test was 0.2 to 0.8 °C off | Outdoor temperature, weather forecast, a room to follow | `sensor.<system>_night_prediction` |
-| [Warm-up episodes and PID advice](#warm-up-episodes-and-pid-advice) | **Alpha**: records reliably, advice not yet validated, never applied | Burner flame. For advice: Kp, Ki, Kd of a firmware PID (for example ESPHome) | `sensor.<system>_last_warm_up_overshoot`, `sensor.<system>_pid_advice` |
+| [Warm-up episodes and PID advice](#warm-up-episodes-and-pid-advice) | **Alpha**: records reliably, advice not yet validated, never applied | Room to follow. Helpful: burner flame, outdoor temperature. For advice: Kp, Ki, Kd of a firmware PID (for example ESPHome) | `sensor.<system>_last_warm_up_overshoot`, `sensor.<system>_pid_advice` |
 | [Evening report](#evening-report) | **Beta**: a summary of the above | Any of the above | Persistent notification at 21:00 |
 
 Maturity means:
@@ -45,6 +45,125 @@ Maturity means:
 - **Stable**: not used yet; nothing here is stable. See [When a feature stops being experimental](#when-a-feature-stops-being-experimental).
 
 The analysis has run in one house (an Atag boiler on OpenTherm with an ESPHome PID) since October 2026; the maturity above describes that analysis. If something looks wrong, please [open an issue](https://github.com/BarBaar44/thermostat/issues).
+
+## The entities on the settings page
+
+The settings page asks for a lot of entities. You do not need all of them: each feature starts as soon as the entities it needs are set, and an empty field simply means less detail. This section explains every field: what it is, why it is asked for, whether you need it and where you can get it.
+
+### Which fields each feature needs
+
+✔ = needed for the feature to run, ○ = optional, adds detail, blank = not used.
+
+| Field | Gas per degree-day | Night cooldown model | Warm-up episodes and PID advice |
+|---|---|---|---|
+| Room to follow | | ✔ | ✔ (advice only counts this room) |
+| Comfort time on weekdays / at weekends | | ✔ | |
+| Outdoor temperature | ✔ | ✔ | ○ (sorts warm-ups by weather) |
+| Weather forecast | | ✔ (for the prediction) | |
+| People at home | ○ | ○ | ○ |
+| Gas meter | ✔ | ○ | ○ |
+| Burner flame | ○ (hot-water split) | | ○ (short-cycling check) |
+| Hot water active | ○ (hot-water split) | | ○ (skips hot-water disturbed warm-ups) |
+| Central heating active | ○ (hot-water split) | | |
+| Flow water temperature | | | ○ |
+| Return water temperature | | | ○ |
+| PID Kp, Ki, Kd | | | ✔ for advice (all three) |
+| PID integral | | | ○ |
+| Gas price before / after 06:00 | | ○ | |
+
+**A sensible start for most houses:** outdoor temperature, weather forecast and gas meter. That gives you gas per degree-day and the night model. The boiler fields only make sense with a smart (OpenTherm) boiler connection; the PID fields only with an ESPHome style PID.
+
+**Long-term statistics.** Gas per degree-day reads Home Assistant's long-term statistics of the gas meter and the outdoor temperature, so both sensors need them. A sensor has them when it has a `state_class` (`measurement` for a temperature, `total_increasing` or `total` for a meter). Most integrations set this already. Check it under **Developer tools > Statistics**: if the sensor is listed there, it is fine.
+
+### Room to follow
+
+- **What:** one of your rooms, picked from a list.
+- **Why:** the night model and the PID advice study one room in depth. Pick the room where people spend the most time and that leads the heating most often, usually the living room. Its **warm** temperature is the morning target for the night prediction.
+- **Required:** yes, the form always has a value.
+- **Where from:** your own rooms in this integration.
+
+### Comfort time on weekdays / at weekends
+
+- **What:** the time in the morning by which the followed room should be warm.
+- **Why:** the night prediction works out how cold the room will be at that time and when the heating would have to start to be warm by then.
+- **Required:** yes, with defaults you can keep.
+- **Where from:** your own routine.
+
+### Outdoor temperature
+
+- **What:** a sensor with the temperature outside, in °C.
+- **Why:** almost everything here depends on the weather. Gas use is corrected for how cold it was (degree-days), the night model needs the difference between inside and outside to know how fast the room cools, and warm-ups are grouped by outdoor temperature so advice compares like with like.
+- **Required:** for gas per degree-day and the night model, yes. Without it, warm-ups still get recorded but all land in one "unknown" weather group.
+- **Where from:**
+  - **Your own outdoor sensor** (Zigbee, Bluetooth, a weather station) is best: it measures your house's real outside. Place it in the shade, out of the sun and away from walls that warm up.
+  - **Your boiler**, if it has an outdoor sensor and an OpenTherm connection (OpenTherm Gateway, ESPHome OpenTherm).
+  - **A weather service** works too: many weather integrations (Buienradar, OpenWeatherMap) add a temperature *sensor*. The default Met.no integration only has a weather *entity*; you can turn its temperature into a sensor with a template sensor (device class temperature, state class measurement).
+
+### Weather forecast
+
+- **What:** a `weather` entity that offers an **hourly** forecast.
+- **Why:** at 21:00 the night model reads tonight's expected outdoor temperatures to predict how cold the room will be in the morning. It also records the wind speed during the night, since wind cools a house faster.
+- **Required:** for the prediction, yes. Without it nights are still recorded and learned from, but no prediction is made.
+- **Where from:** Home Assistant sets one up for you at installation: Met.no, usually called `weather.forecast_home`. Buienradar, OpenWeatherMap and similar weather integrations also work, as long as they have an hourly forecast. If the forecast is missing, the Home Assistant log shows "No hourly forecast from …".
+
+### People at home
+
+- **What:** something that says how many people are at home, as a number.
+- **Why:** days when nobody was home are left out of the gas figures, because an empty house uses less gas and would make the weather correction look better than it is. Warm-ups and nights also note how many people were home: people, cooking and appliances warm a room too.
+- **Required:** no. Without it, every day counts and nothing is left out.
+- **Where from:** `zone.home` (filled in for you when it exists). Its value is the number of **persons** inside your home zone, so it works when each person has a device tracker, usually the Home Assistant Companion app on their phone. A sensor that counts people in another way (for example a template sensor) works too.
+
+### Gas meter
+
+- **What:** a sensor with the **total** gas use in m³, the number that only goes up.
+- **Why:** this is the gas use itself, the thing gas per degree-day measures. Nights and warm-ups also record how much gas they used.
+- **Required:** for gas per degree-day, yes.
+- **Where from:** in the Netherlands and Belgium, the smart meter's P1 port, read with the DSMR Smart Meter integration, a HomeWizard P1 meter or a similar dongle. If your gas already shows up in Home Assistant's **Energy** dashboard, that sensor is the right one. A daily or monthly usage sensor (one that resets) does **not** work.
+
+### Burner flame, Hot water active, Central heating active
+
+- **What:** three on/off sensors from the boiler: is the flame burning, is the boiler making hot water for a tap or shower, and is it heating the house.
+- **Why:**
+  - Together they split each day's gas into **hot water** and **heating**. Only the heating part depends on the weather, so without the split a long shower can look like a cold day. All three are needed for the split.
+  - Burner flame also counts how often the boiler starts during a warm-up. Many short starts (short-cycling) wear the boiler and waste gas.
+  - Hot water active lets warm-ups be skipped when a lot of hot water was used in the middle of one; the boiler then stops heating the house for a while and the warm-up does not show how the heating behaves.
+- **Required:** no. Without them gas per degree-day still works, but uses an estimate for hot water.
+- **Where from:** only boilers with a digital connection give these, usually **OpenTherm**:
+  - the **OpenTherm Gateway** integration (OTGW),
+  - an **ESPHome OpenTherm** board (flame, DHW active and CH active binary sensors),
+  - a **DIYLess** thermostat,
+  - some manufacturers' own integrations.
+  A boiler switched by a simple relay (on/off) cannot report these.
+
+  **Note:** the hot-water split uses a fixed rate of 0.019 m³ of gas per burner minute, measured on one boiler (about 11 kW on hot water). With a different boiler the split will be off until this becomes a setting.
+
+### Flow water temperature, Return water temperature
+
+- **What:** two sensors in °C. *Flow* is the water leaving the boiler towards the radiators, *return* is the water coming back.
+- **Why:** recorded with each warm-up and shown in the report (highest flow, average return), so you can see how hard the boiler worked. A condensing boiler is most efficient when the return water stays below about 55 °C: then it recovers extra heat from its exhaust.
+- **Required:** no. They do not affect the advice.
+- **Where from:** the same sources as the flame sensors: OpenTherm Gateway, ESPHome OpenTherm, DIYLess.
+
+### PID Kp, PID Ki, PID Kd
+
+- **What:** the three tuning values of the PID controller in your boiler firmware that decides the flow temperature. Roughly: **Kp** reacts to how far the room is below target, **Ki** to how long it has been below, **Kd** to how fast the temperature changes.
+- **Why:** the PID advice suggests a better value for one of these. It needs to know the current values to suggest a change, and it notices when you change one by hand so it can check whether the change helped.
+- **Required:** all three for advice. Without them warm-ups are still recorded and judged, but no advice is given.
+- **Where from:** an ESPHome firmware with a PID climate, where the values are exposed as **number** entities (or kept in **input_number** helpers that match what you flashed). The advice limits (Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000) fit an ESPHome PID driving an OpenTherm flow temperature. **If your boiler has no such PID, leave these empty**: the advice would not make sense for it.
+
+### PID integral
+
+- **What:** a sensor with the PID's integral term: the part of its output built up from how long the room has been below target.
+- **Why:** recorded with each warm-up (lowest and highest value) to help explain an overshoot: an integral that keeps building up is a classic cause.
+- **Required:** no. It does not affect the advice.
+- **Where from:** ESPHome's PID climate can publish it as a sensor (`type: INTEGRAL`). ESPHome reports it as a percentage (times 100); the integration divides it by 100.
+
+### Gas price tomorrow before 06:00 / after 06:00
+
+- **What:** two sensors with the gas price for tomorrow, before and after 06:00.
+- **Why:** dynamic gas contracts change price at 06:00. The prices are shown next to the night prediction, so you can see whether starting the heating a bit earlier would be cheaper. Nothing is calculated with them yet.
+- **Required:** no, purely informational.
+- **Where from:** an integration for a dynamic energy contract, such as Frank Energie, Zonneplan, Tibber or EnergyZero. These usually give the current price or a list of prices; you may need a template sensor to pick tomorrow's price before and after 06:00.
 
 ## Gas per degree-day
 
