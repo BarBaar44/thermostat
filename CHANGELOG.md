@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Removed the legacy YAML setup and the pyscript tuner** (`automations/`, `scripts/`, `sensors/`, `deltaTemperature`, `housewarming.yaml`, `pyscript/`). The integration replaces them; they're still in the [v1.1.0 tag](https://github.com/BarBaar44/thermostat/tree/v1.1.0) for reference and for carrying tuner history over.
+
 ## 1.1.0
 
 - **Rooms that only heat along:** a new room option, **Drives the heat source** (default on). Turned off, the room never becomes the winner, never starts an on/off heat source and doesn't turn on the central heating enable switch, but its TRVs still get its target and open while another room drives the heat source. For a hallway or another space that cools much faster than the rooms around it. New role `waiting` while such a room is below target and nothing else needs heat. This is not an offset follower: the room heats to its own target, not "another room minus a few degrees".

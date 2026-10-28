@@ -1,6 +1,6 @@
 """Experimental features: the HA glue around the analysis modules.
 
-Port of the pyscript heating_tuner app (BarBaar44/thermostat, pyscript/apps).
+Port of the pyscript heating_tuner app (BarBaar44/thermostat v1.1.0, pyscript/apps).
 Observe only: nothing here changes the heating. It
 
 * samples the heat source once a minute and cuts warm-up episodes, judged
