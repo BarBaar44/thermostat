@@ -1,2 +1,2 @@
-# Pinned: this plugin version pins homeassistant==2026.2.3 (Python 3.13).
-pytest-homeassistant-custom-component==0.13.316
+# Pinned: this plugin version pins homeassistant==2026.10.0 (Python 3.14), the minimum in hacs.json.
+pytest-homeassistant-custom-component==0.13.371

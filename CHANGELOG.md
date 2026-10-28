@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** renaming a room's climate or binary sensor entity ID made the entity disappear until the integration was reloaded. Room devices now link to the heating system device with `via_device_id`; the old `via_device` tuple is deprecated and raises when Home Assistant itself re-adds the entity.
+- **Tests:** run against Home Assistant 2026.10.0 (the minimum in `hacs.json`) on Python 3.14.
+
 ## 1.0.0
 
 First release of **Cloudless Multiroom Thermostat**, the Home Assistant integration that replaces the YAML setup in this repo.

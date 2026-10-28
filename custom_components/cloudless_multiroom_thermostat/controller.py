@@ -157,6 +157,7 @@ class HeatingController:
         self.winner = Winner(None, WINNER_OFF, self.off_temp, None, 0.0)
         self.present = True
         self.experimental: Any = None  # ExperimentalRunner when enabled in options
+        self.system_device_id: str | None = None  # set in async_setup_entry
         self._unsubs: list[CALLBACK_TYPE] = []
         self._sent: dict[str, tuple[Any, float]] = {}
         self._started = False

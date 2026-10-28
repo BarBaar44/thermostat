@@ -70,13 +70,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: CMTConfigEntry) -> bool:
 
         controller.experimental = ExperimentalRunner(hass, controller)
 
-    dr.async_get(hass).async_get_or_create(
+    system_device = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         name=entry.title,
         manufacturer="Cloudless Multiroom Thermostat",
         model="Heating system",
     )
+    controller.system_device_id = system_device.id
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await controller.async_start()

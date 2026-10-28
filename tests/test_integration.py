@@ -404,6 +404,23 @@ async def test_edit_room_keeps_device_area_set_in_ha(hass: HomeAssistant, setup)
     assert devices.async_get_device(identifiers={(DOMAIN, office.subentry_id)}).area_id == study.id
 
 
+async def test_rename_room_climate_keeps_entity(hass: HomeAssistant, setup) -> None:
+    """Renaming a room climate's entity ID re-adds it under the new ID (the room device links to the system device by id)."""
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    entry, _ = setup
+    living = next(s for s in entry.subentries.values() if s.title == "Living")
+    devices = dr.async_get(hass)
+    system = devices.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    room = devices.async_get_device(identifiers={(DOMAIN, living.subentry_id)})
+    assert room.via_device_id == system.id
+
+    er.async_get(hass).async_update_entity("climate.living", new_entity_id="climate.virtual_thermostat_living")
+    await hass.async_block_till_done()
+    assert hass.states.get("climate.living") is None
+    assert hass.states.get("climate.virtual_thermostat_living") is not None
+
+
 async def test_winner_area_comes_from_device_area(hass: HomeAssistant, setup) -> None:
     from homeassistant.helpers import area_registry as ar, device_registry as dr
 
