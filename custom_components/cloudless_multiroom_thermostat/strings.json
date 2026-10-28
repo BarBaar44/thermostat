@@ -82,7 +82,7 @@
           "exp_flame": "Burner flame",
           "exp_dhw": "Hot water active",
           "exp_ch_active": "Central heating active",
-          "exp_dhw_rate": "Hot water gas rate",
+          "exp_dhw_rate": "Hot water gas rate (optional)",
           "exp_water": "Flow water temperature",
           "exp_return": "Return water temperature",
           "exp_kp": "PID Kp",
@@ -100,7 +100,7 @@
           "exp_people": "zone.home or a count sensor. Days nobody was home are left out of the gas figures.",
           "exp_gas": "Total gas meter (m³), with long-term statistics.",
           "exp_flame": "With hot water active and central heating active: splits each day's gas into hot water and heating.",
-          "exp_dhw_rate": "Gas per burner minute while making hot water, used for that split. Measure it: gas meter change during a shower with the heating off, divided by the burner minutes. Only days split from now on use a new value.",
+          "exp_dhw_rate": "Leave empty: measured automatically from showers outside heating hours (0.019 until enough are collected). Set it only to pin your own value. Only days split from now on use a change.",
           "exp_kp": "Kp, Ki and Kd of a firmware PID (for example ESPHome). With all three set, warm-ups get tuning advice.",
           "exp_integral": "Optional PID integral sensor (ESPHome reports it x100).",
           "exp_gas_price_before6": "Optional, shown next to the night prediction (for example Frank Energie)."

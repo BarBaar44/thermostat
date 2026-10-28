@@ -66,7 +66,6 @@ from .const import (
     DEFAULT_BUFFER,
     DEFAULT_DRIVES_SOURCE,
     DEFAULT_COMFORT_WEEKDAY,
-    DEFAULT_DHW_RATE,
     DEFAULT_COMFORT_WEEKEND,
     DEFAULT_ECO_TEMP,
     DEFAULT_HEARTBEAT_MIN,
@@ -232,7 +231,7 @@ def experimental_schema(rooms: dict[str, str]) -> vol.Schema:
             vol.Optional(CONF_EXP_FLAME): _entities("binary_sensor"),
             vol.Optional(CONF_EXP_DHW): _entities("binary_sensor"),
             vol.Optional(CONF_EXP_CH_ACTIVE): _entities("binary_sensor"),
-            vol.Required(CONF_EXP_DHW_RATE, default=DEFAULT_DHW_RATE): selector.NumberSelector(
+            vol.Optional(CONF_EXP_DHW_RATE): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=0.001, max=0.1, step=0.001, mode=selector.NumberSelectorMode.BOX,
                     unit_of_measurement="m³/min",
@@ -303,7 +302,7 @@ class SettingsOptionsFlow(OptionsFlow):
         }
         if user_input is not None:
             data = {**self._options, **user_input}
-            for key in EXP_ENTITY_KEYS:  # cleared fields really clear
+            for key in (*EXP_ENTITY_KEYS, CONF_EXP_DHW_RATE):  # cleared fields really clear
                 if not user_input.get(key):
                     data[key] = None
             return self.async_create_entry(data=data)

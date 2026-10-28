@@ -88,7 +88,7 @@ EXP_ENTITY_KEYS: Final = (
 )
 DEFAULT_COMFORT_WEEKDAY: Final = "07:30:00"
 DEFAULT_COMFORT_WEEKEND: Final = "08:00:00"
-DEFAULT_DHW_RATE: Final = 0.019  # measured on one boiler, about 11 kW on hot water
+DEFAULT_DHW_RATE: Final = 0.019  # until measured; measured on one boiler, about 11 kW on hot water
 EXP_SUMMARY_HOUR: Final = 21  # fixed: the night model measures the evening drop from 21:00
 SERVICE_EXPERIMENTAL_REPORT: Final = "experimental_report"
 DOCS_EXPERIMENTAL_URL: Final = (

@@ -125,7 +125,7 @@ async def test_options_enable_experimental(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert entry.options["exp_gas"] == "sensor.gas" and entry.options["exp_flame"] is None
-    assert entry.options["exp_dhw_rate"] == pytest.approx(0.019)
+    assert entry.options["exp_dhw_rate"] is None  # empty: measured automatically
     assert entry.runtime_data.experimental is not None
     for name in ("gas_per_degree_day", "night_prediction", "last_warm_up_overshoot", "pid_advice"):
         assert hass.states.get(f"sensor.heating_{name}") is not None, name
@@ -147,7 +147,6 @@ async def test_options_enable_experimental(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     assert entry.runtime_data.experimental is None
     assert entry.options["exp_gas"] == "sensor.gas" and entry.options["exp_comfort_weekday"] == "07:00:00"
-    assert entry.options["exp_dhw_rate"] == pytest.approx(0.019)
 
 
 async def test_warm_up_episode_recorded(hass: HomeAssistant) -> None:
@@ -267,7 +266,9 @@ async def test_gas_split_from_recorder_data(hass: HomeAssistant) -> None:
     assert day["heating_gas"] == pytest.approx(0.6, abs=0.001)
     assert day["dhw_gas"] == pytest.approx(0.05, abs=0.001)
     assert day["ch_min"] == 180 and day["flame_min"] == 190
-    assert day["dhw_rate"] == pytest.approx(0.019)
+    assert day["dhw_rate"] == pytest.approx(0.019) and day["dhw_rate_source"] == "default"
+    # the 10-minute shower at 20:00 sits between quiet hours, so it is a rate sample
+    assert day["rate_min"] == pytest.approx(10) and day["rate_gas"] == pytest.approx(0.05, abs=0.001)
 
 
 async def test_report_notification(hass: HomeAssistant) -> None:
@@ -330,3 +331,44 @@ def test_split_day_uses_dhw_rate() -> None:
     assert custom["dhw_rate"] == 0.025
     # never more hot water than the hour burned
     assert gas_core.split_day(hours, 0.5)["dhw_gas"] == pytest.approx(1.0)
+
+
+def _h(gas=0.0, ch=0, dhw=0, flame=None):
+    return {"gas": gas, "ch": ch, "dhw": dhw, "flame": dhw if flame is None else flame}
+
+
+def test_rate_sample_needs_quiet_hours_around_a_draw() -> None:
+    from custom_components.cloudless_multiroom_thermostat.experimental import gas_core
+
+    # shower, meter reports part of it an hour late: both hours count
+    hours = [_h(), _h(0.15, dhw=8), _h(0.04), _h()]
+    assert gas_core.rate_sample(hours) == (pytest.approx(0.19), pytest.approx(8))
+    # right after heating: heating gas may leak in, not a sample
+    assert gas_core.rate_sample([_h(0.5, ch=60, flame=60), _h(0.15, dhw=8), _h(), _h()]) == (0, 0)
+    # right before heating: the late gas would land in a heating hour
+    assert gas_core.rate_sample([_h(), _h(0.15, dhw=8), _h(0.5, ch=60, flame=60)]) == (0, 0)
+    # washing hands: too short to count
+    assert gas_core.rate_sample([_h(), _h(0.03, dhw=2), _h(), _h()]) == (0, 0)
+
+
+def test_measured_rate_needs_enough_minutes() -> None:
+    from custom_components.cloudless_multiroom_thermostat.experimental import gas_core
+
+    days = {f"2026-10-{d:02d}": {"rate_gas": 0.21, "rate_min": 10} for d in range(1, 6)}
+    assert gas_core.measured_rate(days) == (None, 50)
+    days["2026-10-06"] = {"rate_gas": 0.21, "rate_min": 10}
+    assert gas_core.measured_rate(days) == (pytest.approx(0.021), 60)
+    # implausible (meter glitch) is ignored
+    assert gas_core.measured_rate({"d": {"rate_gas": 9.0, "rate_min": 60}})[0] is None
+
+
+async def test_dhw_rate_setting_over_measured_over_default(hass: HomeAssistant) -> None:
+    entry = await _setup(hass, EXP)
+    runner = entry.runtime_data.experimental
+    assert runner._dhw_rate({})["source"] == "default"
+    stored = {"2026-10-01": {"rate_gas": 1.5, "rate_min": 60}}
+    assert runner._dhw_rate(stored) == {"rate": 0.025, "source": "measured", "minutes": 60}
+    hass.config_entries.async_update_entry(entry, options={**entry.options, "exp_dhw_rate": 0.02})
+    await hass.async_block_till_done()
+    runner = entry.runtime_data.experimental
+    assert runner._dhw_rate(stored)["source"] == "setting" and runner._dhw_rate(stored)["rate"] == 0.02

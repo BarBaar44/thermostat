@@ -32,8 +32,16 @@ def gas_progress(summary):
     text = f"Gas per degree-day: {min(days, GAS_DAYS)} of {GAS_DAYS} days of data"
     if summary.get("first"):
         text += " (since {})".format(summary["first"])
-    text += "; hot-water rate is still a constant"
-    return {"done": False, "text": text}
+    rate = summary.get("rate")
+    if rate is None:  # no boiler signals: no split, so no rate needed
+        rate_ok = True
+    elif rate["source"] == "default":
+        rate_ok = False
+        text += "; hot-water rate still the default ({} of 60 minutes measured)".format(rate["minutes"])
+    else:
+        rate_ok = True
+        text += "; hot-water rate {}".format(rate["source"])
+    return {"done": days >= GAS_DAYS and rate_ok, "text": text}
 
 
 def night_progress(nights):
