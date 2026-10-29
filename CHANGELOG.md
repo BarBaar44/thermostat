@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Fix:** a room with **Drives the heat source** off (new in 1.1.0) kept the experimental features seeing the heating as on. While such a room stayed on heat overnight, no night was recorded for the night model, and a warm-up episode didn't end when the heating stopped. Those rooms are now ignored there, as they already were for the central heating enable switch.
 - **Hot water gas rate is measured:** the hot-water split no longer uses a fixed 0.019 m³ of gas per minute. The integration measures the rate from hot-water draws outside heating hours (draws under 3 minutes left out) and uses it once it has 60 minutes; until then 0.019. A new optional field on the experimental settings page pins your own value instead. The evening report and the gas per degree-day sensor show which rate is used. Only days split after a change use the new rate; each split day stores its rate. Details: [docs/experimental.md](docs/experimental.md#hot-water-gas-rate).
 - **Docs:** [docs/experimental.md](docs/experimental.md) now explains every entity on the experimental settings page: what it is, why it's needed, whether it's required and where to get it.
 - **Removed the legacy YAML setup and the pyscript tuner** (`automations/`, `scripts/`, `sensors/`, `deltaTemperature`, `housewarming.yaml`, `pyscript/`). The integration replaces them; they're still in the [v1.1.0 tag](https://github.com/BarBaar44/thermostat/tree/v1.1.0) for reference and for carrying tuner history over.

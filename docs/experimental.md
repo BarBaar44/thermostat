@@ -190,7 +190,7 @@ Raw gas use per day mostly follows the weather, so it can't show that. The featu
 
 **Question it answers:** how cold will the room be tomorrow morning, and when would the heating have to start to be warm in time?
 
-When the heating goes off in the evening (no room heating any more, between 18:00 and 02:00), a **night** starts. Every 10 minutes it samples the room you chose under **Room to follow**, the outdoor temperature, wind, that room's windows, the sun and how many people are home, until the heating comes back on (or 11:00). Nights shorter than 4 hours are ignored.
+When the heating goes off in the evening (no room that drives the heat source heating any more, between 18:00 and 02:00; a room with **Drives the heat source** off, such as a hallway on eco, doesn't count), a **night** starts. Every 10 minutes it samples the room you chose under **Room to follow**, the outdoor temperature, wind, that room's windows, the sun and how many people are home, until the heating comes back on (or 11:00). Nights shorter than 4 hours are ignored.
 
 - **The quiet part of the night** (from 01:00 until sunrise or until heating starts, windows closed) follows Newton's law of cooling, `dT/dt = -k * (T_room - T_outdoor)`, with time constant tau = 1/k.
 - **The evening does not follow that law.** People, cooking and appliances keep a living room warm for a few hours after the heating stops, then it drops around bedtime. That part is learned as a plain number: the evening drop from 21:00 to 01:00.
