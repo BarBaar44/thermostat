@@ -18,7 +18,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from custom_components.cloudless_multiroom_thermostat.const import DOCS_EXPERIMENTAL_URL, DOMAIN
 from custom_components.cloudless_multiroom_thermostat.experimental import runner as runner_mod
 
-from .test_integration import LIVING, OFFICE, SYSTEM, _states
+from .test_integration import HALLWAY, LIVING, OFFICE, SYSTEM, _states
 
 EXP = {
     "experimental": True,
@@ -40,7 +40,7 @@ async def _calls_noop(self, domain, service, data):
     return None
 
 
-async def _setup(hass: HomeAssistant, options: dict) -> MockConfigEntry:
+async def _setup(hass: HomeAssistant, options: dict, extra_rooms: tuple[dict, ...] = ()) -> MockConfigEntry:
     _states(hass)
     hass.states.async_set("sensor.outdoor", "6.0")
     hass.states.async_set("sensor.gas", "1000.0")
@@ -59,6 +59,10 @@ async def _setup(hass: HomeAssistant, options: dict) -> MockConfigEntry:
         subentries_data=[
             ConfigSubentryData(data=LIVING, subentry_type="room", title="Living", unique_id=None),
             ConfigSubentryData(data=OFFICE, subentry_type="room", title="Office", unique_id=None),
+            *(
+                ConfigSubentryData(data=room, subentry_type="room", title=room["name"], unique_id=None)
+                for room in extra_rooms
+            ),
         ],
     )
     entry.add_to_hass(hass)
@@ -218,6 +222,32 @@ async def test_night_recorded(hass: HomeAssistant, freezer: FrozenDateTimeFactor
     assert runner._night is None
     nights = [json.loads(line) for line in open(runner.f_nights, encoding="utf-8")]
     assert len(nights) == 1 and nights[0]["end_reason"] == "heating_on"
+
+
+async def test_night_starts_while_a_non_driving_room_heats(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A room with "Drives the heat source" off (a hallway on eco all night) doesn't block the night."""
+    freezer.move_to(dt_util.as_utc(dt_util.now().replace(hour=19, minute=0, second=0, microsecond=0)))
+    entry = await _setup(hass, EXP, extra_rooms=(HALLWAY,))
+    runner = entry.runtime_data.experimental
+    for entity_id in ("climate.living", "climate.hallway"):
+        await hass.services.async_call(
+            "climate", "set_hvac_mode", {"entity_id": entity_id, "hvac_mode": "heat"}, blocking=True
+        )
+    await hass.async_block_till_done()
+    assert runner._any_heating()
+    runner._heating_on = True
+
+    freezer.move_to(dt_util.as_utc(dt_util.now().replace(hour=20, minute=0)))
+    await hass.services.async_call(
+        "climate", "set_hvac_mode", {"entity_id": "climate.living", "hvac_mode": "off"}, blocking=True
+    )
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get("climate.hallway").state == "heat"
+    assert not runner._any_heating(), "the hallway doesn't drive the heat source"
+    assert runner._night is not None, "the living room going off starts a night"
 
 
 async def test_gas_split_from_recorder_data(hass: HomeAssistant) -> None:

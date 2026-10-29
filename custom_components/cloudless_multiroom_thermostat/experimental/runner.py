@@ -178,8 +178,8 @@ class ExperimentalRunner:
         return state is not None and state.state == STATE_ON
 
     def _any_heating(self) -> bool:
-        """What the CH enable switch follows: some room is set to heat and not held off."""
-        return any(self.ctl.is_heating(room) for room in self.ctl.rooms.values())
+        """What the CH enable switch follows: some room that drives the heat source is set to heat and not held off."""
+        return any(self.ctl.is_heating(room) and room.drives for room in self.ctl.rooms.values())
 
     def _params(self) -> dict[str, float | None]:
         return {"kp": self._float(CONF_EXP_KP), "ki": self._float(CONF_EXP_KI), "kd": self._float(CONF_EXP_KD)}
