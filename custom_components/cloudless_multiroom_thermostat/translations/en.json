@@ -54,7 +54,7 @@
           "away_mode": "When everybody is away",
           "skip_unchanged_writes": "Skip unchanged TRV writes",
           "external_temp_heartbeat": "Heartbeat",
-          "experimental": "Enable experimental features"
+          "experimental": "Enable learning features (observe only)"
         },
         "data_description": {
           "heat_source_entity": "Switch: the boiler relay. Climate: the ESPHome / DIYLess thermostat climate entity. OTGW: the OpenTherm Gateway climate entity. It receives the winning room target.",
@@ -65,12 +65,12 @@
           "away_mode": "Rooms that are set to heat go off, or are lowered to their eco temperature.",
           "skip_unchanged_writes": "Saves TRV batteries. When off, the heartbeat also resends every TRV target.",
           "external_temp_heartbeat": "How often room temperatures are resent to TRV external inputs, even when unchanged (Sonoff TRVZB falls back to its own sensor after 2 hours).",
-          "experimental": "Observe-only diagnostics: warm-up and PID advice, night cooldown prediction, gas per degree-day and an evening report. They never change the heating. On: the next page asks for the entities they use. What each feature does and how mature it is: [Experimental features]({docs_url})"
+          "experimental": "They learn how the house and boiler behave: warm-up and PID advice, night cooldown prediction, gas per degree-day and an evening report. Observe only: they never change the heating. On: the next page asks for the entities they use. What each feature does and how mature it is: [Learning features]({docs_url})"
         }
       },
       "experimental": {
-        "title": "Experimental features",
-        "description": "All observe only: nothing here changes the heating. Every entity is optional; a feature runs once the entities it needs are set. What each feature does, what it needs and how mature it is: [Experimental features]({docs_url})",
+        "title": "Learning features (observe only)",
+        "description": "All observe only: nothing here changes the heating. Every entity is optional; a feature runs once the entities it needs are set. What each feature does, what it needs and how mature it is: [Learning features]({docs_url})",
         "data": {
           "exp_room": "Room to follow",
           "exp_comfort_weekday": "Comfort time on weekdays",
@@ -261,8 +261,8 @@
       }
     },
     "experimental_report": {
-      "name": "Experimental report",
-      "description": "Post the experimental report now (it is also posted every evening at 21:00).",
+      "name": "Learning features report",
+      "description": "Post the learning features report now (it is also posted every evening at 21:00).",
       "fields": {
         "config_entry_id": {
           "name": "Heating system",

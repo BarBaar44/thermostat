@@ -25,7 +25,7 @@ The card's README lists its options, including how to pick the rooms and the boi
 - [Set up](#set-up)
 - [What it creates](#what-it-creates)
 - [How it works](#how-it-works)
-- [Experimental features](#experimental-features)
+- [Learning features (observe only)](#learning-features-observe-only)
 - [Example setup](#example-setup)
 - [ESPHome OpenTherm thermostat (`thermostat.yaml`)](#esphome-opentherm-thermostat-thermostatyaml)
 - [Development and test environment](#development-and-test-environment)
@@ -83,9 +83,9 @@ A boiler has only **one** flow temperature, while every room wants its own. Two 
 
 **Windows and presence:** an open window (after its open delay) holds its room off and sets its TRVs to the off temperature; when it closes, the room returns to its own mode and target. When everybody is away, rooms go off or to eco; they return when someone is home. Window has priority over a manual pause, which has priority over away.
 
-## Experimental features
+## Learning features (observe only)
 
-Optional, observe-only diagnostics: warm-up episodes with PID advice, a night cooldown model that predicts the morning, gas per degree-day with the hot water split off, and an evening report. Switch them on under **Configure > Enable experimental features**. What each one does, what it needs and how mature it is: **[docs/experimental.md](docs/experimental.md)**.
+Optional features that learn how the house and boiler behave and never change the heating: warm-up episodes with PID advice, a night cooldown model that predicts the morning, gas per degree-day with the hot water split off, and an evening report. Switch them on under **Configure > Enable learning features (observe only)**. What each one does, what it needs and how mature it is: **[docs/experimental.md](docs/experimental.md)**.
 
 ## Example setup
 
@@ -123,7 +123,7 @@ Sonoff is the better choice where it fits: cheaper, fully local and well support
 - **`climate: platform: pid`** (`main_climate`, "Central heating") the control loop. Its room temperature comes from Home Assistant: point it at the integration's **Winning room temperature** sensor (the example uses `sensor.virtual_heating_temperature`; rename the sensor to that, or change the ID). A 1 second heartbeat filter keeps the PID fed when the value doesn't change. Starting values `kp: 0.7`, `ki: 0.003`.
 - **`sensor`, `binary_sensor`, `switch`** the OpenTherm telemetry this boiler supports: modulation, pressure, flow, return and hot water temperatures, faults, flame, pump, and the central heating, hot water and outside temperature compensation switches.
 
-**Runtime-adjustable PID values.** "Central heating Kp / Ki / Kd" are number entities that apply to `main_climate` on every change and at boot, so values set in Home Assistant survive a reboot. "Central heating PID Result / Error / Proportional / Integral / Derivative" sensors show why the loop does what it does (ESPHome reports them x100). `min_integral: 0`: the loop only heats, so a negative integral is never useful and would otherwise have to unwind every morning. The experimental [PID advice](docs/experimental.md#warm-up-episodes-and-pid-advice) works with these numbers.
+**Runtime-adjustable PID values.** "Central heating Kp / Ki / Kd" are number entities that apply to `main_climate` on every change and at boot, so values set in Home Assistant survive a reboot. "Central heating PID Result / Error / Proportional / Integral / Derivative" sensors show why the loop does what it does (ESPHome reports them x100). `min_integral: 0`: the loop only heats, so a negative integral is never useful and would otherwise have to unwind every morning. The [PID advice](docs/experimental.md#warm-up-episodes-and-pid-advice) works with these numbers.
 
 ### Never write the hot water setpoint (Atag lockout C1 51)
 

@@ -1,8 +1,10 @@
-# Experimental features
+# Learning features (observe only)
 
-Cloudless Multiroom Thermostat has a set of **observe-only** diagnostics. They record how the house and the boiler behave and report what they *would* change. **Nothing here changes the heating**: no setpoints, no PID values, no schedule.
+Cloudless Multiroom Thermostat has a set of **observe-only** learning features. Earlier versions called them *experimental features*; the option, service and file names still use that word.
 
-They are off by default. To switch them on: **Settings > Devices & services > Cloudless Multiroom Thermostat > Configure**, tick **Enable experimental features**, then fill in the entities on the next page. Every entity is optional; each feature runs as soon as the entities it needs are set. [The entities on the settings page](#the-entities-on-the-settings-page) explains each one and where to get it.
+**Observe only** is the guarantee: they record how the house and the boiler behave and report what they *would* change. **Nothing here changes the heating**: no setpoints, no PID values, no schedule.
+
+They are off by default. To switch them on: **Settings > Devices & services > Cloudless Multiroom Thermostat > Configure**, tick **Enable learning features (observe only)**, then fill in the entities on the next page. Every entity is optional; each feature runs as soon as the entities it needs are set. [The entities on the settings page](#the-entities-on-the-settings-page) explains each one and where to get it.
 
 ## What this is for
 
@@ -14,9 +16,9 @@ The aim is to learn how one room and the boiler behave, so the heating can later
 
 The end goal is **dynamic parameters**: PID values per outdoor band instead of one fixed set, and a morning start time that reaches the comfort temperature just in time (optimum start).
 
-## When a feature stops being experimental
+## When a feature becomes stable
 
-Each feature has a bar to clear. Until it does, it stays observe only. After it does, it may act on the heating, but only once you switch that on separately.
+Most of what keeps a feature from stable is not waiting for data but proof: does the model predict well, does the advice actually help, in more than one kind of weather. Each feature has a bar to clear. Until it does, it stays observe only. After it does, it may act on the heating, but only once you switch that on separately.
 
 | Feature | Stable when | Then it may |
 |---|---|---|
@@ -42,7 +44,7 @@ Maturity means:
 
 - **Alpha**: the data collection works, the conclusions are not trustworthy yet. Read them, don't act on them.
 - **Beta**: the numbers are useful; details may still change.
-- **Stable**: not used yet; nothing here is stable. See [When a feature stops being experimental](#when-a-feature-stops-being-experimental).
+- **Stable**: not used yet; nothing here is stable. See [When a feature becomes stable](#when-a-feature-becomes-stable).
 
 The analysis has run in one house (an Atag boiler on OpenTherm with an ESPHome PID) since October 2026; the maturity above describes that analysis. If something looks wrong, please [open an issue](https://github.com/BarBaar44/thermostat/issues).
 
