@@ -1,9 +1,9 @@
 """
-progress - how far each experimental feature is from stable
-------------------------------------------------------------
+progress - how far each learning feature is from stable
+-------------------------------------------------------
 Plain Python, no Home Assistant. Measures the stored records against the
-thresholds in docs/experimental.md ("When a feature stops being
-experimental") and returns lines for the evening report. Keep the numbers
+thresholds in docs/experimental.md ("When a feature becomes
+stable") and returns lines for the evening report. Keep the numbers
 here and in the docs in step.
 """
 
@@ -127,5 +127,5 @@ def report_lines(gas_summary, nights, episodes):
     """Lines for the evening report, one per feature."""
     lines = []
     for p in (gas_progress(gas_summary), night_progress(nights), pid_progress(episodes)):
-        lines.append("- " + p["text"] + ("; ready to leave experimental" if p["done"] else ""))
+        lines.append("- " + p["text"] + ("; ready to become stable" if p["done"] else ""))
     return lines

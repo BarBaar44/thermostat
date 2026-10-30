@@ -678,6 +678,6 @@ class ExperimentalRunner:
         persistent_notification.async_create(
             self.hass,
             message,
-            title=f"{self.ctl.entry.title}: experimental report {today}",
+            title=f"{self.ctl.entry.title}: learning features report {today}",
             notification_id=f"{DOMAIN}_{self.ctl.entry.entry_id}_report",
         )
