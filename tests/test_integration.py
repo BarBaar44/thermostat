@@ -181,6 +181,20 @@ async def test_winner_gets_buffer_passenger_does_not(hass: HomeAssistant, setup)
     assert calls.last("climate.boiler")[1]["temperature"] == 18.0
 
 
+async def test_role_uses_the_same_rounding_as_the_winner(hass: HomeAssistant, setup) -> None:
+    """0.04 below target rounds to no demand: no winner, and the room doesn't claim to call for heat."""
+    _, calls = setup
+    hass.states.async_set("sensor.living_temp", "18.96", {"device_class": "temperature"})
+    await _heat(hass, "climate.living")  # warm 19 vs 18.96
+    assert hass.states.get("sensor.heating_winning_room").state == "Off"
+    assert hass.states.get("climate.living").attributes["role"] == "reached"
+
+    hass.states.async_set("sensor.living_temp", "18.94", {"device_class": "temperature"})
+    await _tick(hass)
+    assert hass.states.get("sensor.heating_winning_room").state == "Living"
+    assert hass.states.get("climate.living").attributes["role"] == "winner"
+
+
 async def test_room_that_does_not_drive_only_heats_along(hass: HomeAssistant, setup) -> None:
     _, calls = setup
     calls.clear()

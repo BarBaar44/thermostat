@@ -241,7 +241,8 @@ class HeatingController:
         if self.winner.room_id == room.room_id:
             return "winner"
         target = self.effective_target(room)
-        if room.current is not None and target - room.current > 0:
+        # Rounded like select_winner, so a room 0.01 below target doesn't call for heat nobody gives
+        if room.current is not None and round(target - room.current, 1) > 0:
             if self.source_running():
                 return "passenger"
             return "calls_for_heat" if room.drives else "waiting"
