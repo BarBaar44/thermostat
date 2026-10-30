@@ -1,0 +1,62 @@
+name: Release notes
+
+# Fills a release's notes from the matching CHANGELOG.md section
+# (tag v1.2.1 -> "## 1.2.1"). On publish it only fills an empty body,
+# so notes typed by hand are kept. Run it by hand to (re)write the
+# notes of an existing release.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v1.2.1
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    name: Notes from changelog
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      BODY: ${{ github.event.release.body }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Skip when the release already has notes
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "release" ] && [ -n "$(printf '%s' "$BODY" | tr -d '[:space:]')" ]; then
+            echo "Release $TAG already has notes, leaving them."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract the changelog section
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          version="${TAG#v}"
+          awk -v v="$version" '
+            $0 == "## " v { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md \
+            | sed -e '/./,$!d' \
+            | sed -E "s|\]\(([^)#:]+)([)#])|](https://github.com/$GH_REPO/blob/$TAG/\1\2|g" \
+            > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::No '## $version' section in CHANGELOG.md at $TAG"
+            exit 1
+          fi
+          cat notes.md
+
+      - name: Write the release notes
+        if: steps.check.outputs.skip != 'true'
+        run: gh release edit "$TAG" --notes-file notes.md
