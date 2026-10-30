@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 
+- **Experimental features are now called learning features (observe only).** They never changed the heating, and what keeps them from stable is proof, not data collection, so the old name oversold the risk. The option, the step title, the service name and the evening report say *learning features*; each feature keeps its own maturity (alpha or beta) in [docs/experimental.md](docs/experimental.md). Nothing to migrate: the option key, the service `experimental_report`, entity IDs, file names and the docs URL are unchanged.
 - **Fix:** a room less than 0.05 °C below its target showed role `calls_for_heat` (or `waiting`/`passenger`) while no room was the winner and the heat source stayed off. The role now rounds the gap to 0.1 °C, the same as the winner selection, so it shows `reached`.
 
 ## 1.2.0
@@ -9,7 +10,6 @@
 - **Hot water gas rate is measured:** the hot-water split no longer uses a fixed 0.019 m³ of gas per minute. The integration measures the rate from hot-water draws outside heating hours (draws under 3 minutes left out) and uses it once it has 60 minutes; until then 0.019. A new optional field on the experimental settings page pins your own value instead. The evening report and the gas per degree-day sensor show which rate is used. Only days split after a change use the new rate; each split day stores its rate. Details: [docs/experimental.md](docs/experimental.md#hot-water-gas-rate).
 - **Fix:** a room with **Drives the heat source** off (new in 1.1.0) kept the experimental features seeing the heating as on. While such a room stayed on heat overnight, no night was recorded for the night model, and a warm-up episode didn't end when the heating stopped. Those rooms are now ignored there, as they already were for the central heating enable switch.
 - **Removed the legacy YAML setup and the pyscript tuner** (`automations/`, `scripts/`, `sensors/`, `deltaTemperature`, `housewarming.yaml`, `pyscript/`). The integration replaces them; they're still in the [v1.1.0 tag](https://github.com/BarBaar44/thermostat/tree/v1.1.0) for reference and for carrying tuner history over.
-- **Experimental features are now called learning features (observe only).** They never changed the heating, and what keeps them from stable is proof, not data collection, so the old name oversold the risk. The option, the step title, the service name and the evening report say *learning features*; each feature keeps its own maturity (alpha or beta) in [docs/experimental.md](docs/experimental.md). Nothing to migrate: the option key, the service `experimental_report`, entity IDs, file names and the docs URL are unchanged.
 - **Docs:** [docs/experimental.md](docs/experimental.md) now explains every entity on the experimental settings page: what it is, why it's needed, whether it's required and where to get it.
 
 ## 1.1.0
