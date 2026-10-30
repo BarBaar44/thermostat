@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** a room less than 0.05 °C below its target showed role `calls_for_heat` (or `waiting`/`passenger`) while no room was the winner and the heat source stayed off. The role now rounds the gap to 0.1 °C, the same as the winner selection, so it shows `reached`.
+
 ## 1.2.0
 
 - **Hot water gas rate is measured:** the hot-water split no longer uses a fixed 0.019 m³ of gas per minute. The integration measures the rate from hot-water draws outside heating hours (draws under 3 minutes left out) and uses it once it has 60 minutes; until then 0.019. A new optional field on the experimental settings page pins your own value instead. The evening report and the gas per degree-day sensor show which rate is used. Only days split after a change use the new rate; each split day stores its rate. Details: [docs/experimental.md](docs/experimental.md#hot-water-gas-rate).
