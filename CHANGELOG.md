@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
 - **Fix:** warm-up episodes were never judged. The tuner sampled the winning room, and the winner turns Off (target = off temperature) the moment the room reaches its target, so an episode never saw the target reached: it ran for 4 hours and was recorded as invalid (`target_changed`, `target_not_reached`, no overshoot). An episode now follows the room that led it from the start.
 - **Warm-up episodes survive a restart:** the episode in progress is saved every 5 minutes and when Home Assistant stops (new file `episode_state.json`), and picked up again after a restart such as an update. Missed minutes are filled with the last sample; after more than 15 minutes the episode is dropped.
