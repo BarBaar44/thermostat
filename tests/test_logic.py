@@ -29,6 +29,15 @@ def test_rule0_overshoot_only_reports_off():
     assert w.current == 19.5 and w.delta == -1.5
 
 
+def test_room_exactly_at_target_fills_current():
+    """After a restart there is no fallback; a room at target still gives the heat source a current."""
+    w = select_winner([room("a", target=18, current=18.0)], 10, None)
+    assert w.room_id is None and w.name == "Off" and w.target == 10
+    assert w.current == 18.0 and w.delta == 0
+    w = select_winner([room("a", target=18, current=18.0), room("b", target=18, current=18.4)], 10, None)
+    assert w.current == 18.4, "the largest overshoot still wins over a room at target"
+
+
 def test_no_rooms_keeps_fallback_current():
     w = select_winner([], 10, 17.2)
     assert w.room_id is None and w.current == 17.2

@@ -34,7 +34,8 @@ def select_winner(
     """Pick the room that drives the heat source.
 
     Rule 1+2: among heating rooms, the largest positive demand (target minus current).
-    Rule 3: with no positive demand, the largest overshoot only fills current/delta.
+    Rule 3: with no positive demand, the largest overshoot only fills current/delta
+    (a room exactly at target counts too, so the current is never left empty).
     Rule 0: no genuine demand means "Off" with the off temperature.
     Rooms that don't drive the heat source never count.
     """
@@ -49,7 +50,7 @@ def select_winner(
         dev = abs(delta)
         if delta > 0 and delta > best_delta:
             best_delta, best_dev, best = delta, dev, room
-        elif best_delta <= 0 and dev > best_dev:
+        elif best_delta <= 0 and (best is None or dev > best_dev):
             best_delta, best_dev, best = delta, dev, room
 
     if best is None:
