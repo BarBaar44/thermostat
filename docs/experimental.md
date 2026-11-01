@@ -205,7 +205,9 @@ At 21:00 it takes the hourly forecast and predicts the room temperature at your 
 
 **Question it answers:** is the boiler's PID loop tuned well for this house?
 
-Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, flow and return temperature, outdoor temperature and the gas meter. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops).
+Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, flow and return temperature, outdoor temperature and the gas meter. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops). From the start the episode follows that room's temperature and target, also after it reaches the target and no room wins any more.
+
+An episode in progress survives a restart, such as one to install an update: it's saved every 5 minutes and when Home Assistant stops, and the minutes it missed are filled with the last sample. After a gap of more than 15 minutes the episode is dropped.
 
 Each episode is judged on time to target (more than 60 minutes is slow), overshoot (more than 0.4 °C), the dip below target afterwards (more than 0.4 °C) and flame starts per hour (more than 6 is short-cycling).
 
@@ -227,7 +229,7 @@ The time is fixed at 21:00 because the night model measures the evening drop fro
 Everything stays on your Home Assistant. Files are stored in `config/cloudless_multiroom_thermostat/<entry id>/`:
 
 - `episodes.jsonl`, `nights.jsonl`, `gas_days.jsonl`: append-only, one JSON record per line.
-- `state.json`, `night_state.json`: small state files.
+- `state.json`, `night_state.json`, `episode_state.json`: small state files (`episode_state.json` holds the warm-up episode in progress).
 
 Switching the features off stops all sampling; the files and your entity choices are kept, so switching back on continues where it left off. Delete the folder to start over.
 
