@@ -90,6 +90,27 @@ def _living_id(entry) -> str:
     return next(s.subentry_id for s in entry.subentries.values() if s.title == "Living")
 
 
+async def _minute(hass: HomeAssistant, runner, temp: float, flame: bool = True) -> None:
+    """One minute of a warm-up: new room temperature, the controller's debounced update, a tick."""
+    hass.states.async_set("sensor.living_temp", f"{temp:.2f}", {"device_class": "temperature"})
+    hass.states.async_set("binary_sensor.flame", "on" if flame else "off")
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=3))
+    await hass.async_block_till_done()
+    await runner._async_tick()
+
+
+async def _start_episode(hass: HomeAssistant, entry, minutes: int):
+    runner = entry.runtime_data.experimental
+    await hass.services.async_call(
+        "climate", "set_hvac_mode", {"entity_id": "climate.living", "hvac_mode": "heat"}, blocking=True
+    )
+    for minute in range(minutes):
+        await _minute(hass, runner, 18.0 + 0.01 * minute)
+    assert runner._episode is not None
+    assert len(runner._episode["samples"]) == minutes
+    return runner
+
+
 async def test_off_by_default_no_sensors(hass: HomeAssistant) -> None:
     entry = await _setup(hass, {})
     assert entry.runtime_data.experimental is None
@@ -167,10 +188,8 @@ async def test_warm_up_episode_recorded(hass: HomeAssistant) -> None:
     for minute in range(140):
         if minute < 40:
             temp += 0.03  # reaches 19.0 after about 34 minutes
-        hass.states.async_set("sensor.living_temp", f"{temp:.2f}", {"device_class": "temperature"})
-        hass.states.async_set("binary_sensor.flame", "on" if minute % 20 < 15 else "off")
-        await hass.async_block_till_done()
-        await runner._async_tick()
+        await _minute(hass, runner, temp, flame=minute % 20 < 15)
+    assert entry.runtime_data.winner.name == "Off", "the winner turns Off once the room reaches target"
     assert runner._episode is None, "episode should finish 90 minutes after reaching target"
 
     records = [json.loads(line) for line in open(runner.f_episodes, encoding="utf-8")]
@@ -178,11 +197,55 @@ async def test_warm_up_episode_recorded(hass: HomeAssistant) -> None:
     record = records[0]
     assert record["area"] == "Living" and record["room_class"] == "living"
     assert record["rise_min"] is not None and record["flame_starts"] >= 1
-    assert "other_room" not in record["invalid_reasons"]
+    # The episode follows the room, not the winner that turned Off at target
+    assert record["overshoot"] is not None and record["overshoot"] > 0
+    for reason in ("other_room", "target_changed", "target_not_reached"):
+        assert reason not in record["invalid_reasons"]
     await hass.async_block_till_done()
     state = hass.states.get("sensor.heating_last_warm_up_overshoot")
     assert state.attributes["room"] == "Living" and state.attributes["experimental"] is True
     assert hass.states.get("sensor.heating_pid_advice").state != "unknown"
+
+
+async def test_episode_saved_while_running(hass: HomeAssistant) -> None:
+    """Saved every few samples, so even a crash loses at most a few minutes."""
+    entry = await _setup(hass, {**EXP, "exp_room": None})
+    runner = await _start_episode(hass, entry, 10)
+    saved = json.load(open(runner.f_episode_state, encoding="utf-8"))
+    assert len(saved["episode"]["samples"]) == 10
+    assert saved["episode"]["room_id"] == _living_id(entry)
+
+
+async def test_episode_survives_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    entry = await _setup(hass, {**EXP, "exp_room": None})
+    runner = await _start_episode(hass, entry, 12)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    freezer.tick(timedelta(minutes=3))
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    resumed = entry.runtime_data.experimental
+    assert resumed is not runner
+    # 12 saved samples plus 2 filled minutes; the next tick adds the third
+    assert len(resumed._episode["samples"]) == 14
+    assert resumed._episode["room_id"] == _living_id(entry)
+    await hass.services.async_call(
+        "climate", "set_hvac_mode", {"entity_id": "climate.living", "hvac_mode": "heat"}, blocking=True
+    )
+    await _minute(hass, resumed, 18.2)
+    assert len(resumed._episode["samples"]) == 15
+
+
+async def test_episode_dropped_after_long_gap(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    entry = await _setup(hass, {**EXP, "exp_room": None})
+    runner = await _start_episode(hass, entry, 6)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    freezer.tick(timedelta(minutes=runner_mod.EPISODE_MAX_GAP_MIN + 5))
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.runtime_data.experimental._episode is None
+    assert json.load(open(runner.f_episode_state, encoding="utf-8")) == {}
 
 
 async def test_night_recorded(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:

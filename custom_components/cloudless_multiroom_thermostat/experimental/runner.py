@@ -25,8 +25,8 @@ from datetime import time as dt_time
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components import persistent_notification
-from homeassistant.const import STATE_ON
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP, STATE_ON
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
     async_dispatcher_send,
@@ -76,6 +76,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 MIN_NIGHT_HOURS = 4  # shorter heating pauses are not nights
+EPISODE_SAVE_MIN = 5  # save the episode in progress every this many samples
+EPISODE_MAX_GAP_MIN = 15  # a longer gap (restart) drops the episode
 SPLIT_DAYS_BACK = 6  # complete days still fully in the recorder's 7-day history
 
 
@@ -129,12 +131,14 @@ class ExperimentalRunner:
         self.f_nights = f"{self.dir}/nights.jsonl"
         self.f_night_state = f"{self.dir}/night_state.json"
         self.f_gas_days = f"{self.dir}/gas_days.jsonl"
+        self.f_episode_state = f"{self.dir}/episode_state.json"
         self.signal = signal_experimental(entry_id)
         # Values for the experimental sensors: key -> (state, attributes)
         self.values: dict[str, tuple[Any, dict[str, Any]]] = {}
         self._unsubs: list[CALLBACK_TYPE] = []
-        # In memory only: an episode in progress is lost on a restart, which
-        # is fine, a restart mid-episode would make it unreliable anyway.
+        self._stop_unsub: CALLBACK_TYPE | None = None
+        # The episode in progress is saved every few samples and on stop, so a
+        # restart (an update) doesn't lose a warm-up; a long gap drops it.
         self._episode: dict[str, Any] | None = None
         self._last_target: float | None = None
         # The night in progress is saved every sample (long, restarts likely).
@@ -184,14 +188,20 @@ class ExperimentalRunner:
     def _params(self) -> dict[str, float | None]:
         return {"kp": self._float(CONF_EXP_KP), "ki": self._float(CONF_EXP_KI), "kd": self._float(CONF_EXP_KD)}
 
-    def _sample(self) -> dict[str, Any]:
+    def _sample(self, room_id: str | None = None) -> dict[str, Any]:
+        """One minute of data; room and target follow room_id, else the winner.
+
+        An episode follows the room that led it at the start: the winner turns
+        Off (target = off temperature) the moment that room reaches its target,
+        so the winner alone would never show the target being reached.
+        """
         winner = self.ctl.winner
         room = self.room
-        leader = self.ctl.rooms.get(winner.room_id) if winner.room_id else None
+        leader = self.ctl.rooms.get(room_id or winner.room_id or "")
         return {
             "t": dt_util.now().isoformat(timespec="seconds"),
-            "target": winner.target,
-            # Live temperature of the winning room (the PID process value)
+            "target": self.ctl.effective_target(leader) if leader else winner.target,
+            # Live temperature of the leading room (the PID process value while it wins)
             "room": leader.current if leader else None,
             "area": winner.name if winner.room_id else WINNER_OFF,
             "flame": self._is_on(CONF_EXP_FLAME),
@@ -224,6 +234,7 @@ class ExperimentalRunner:
 
     # ------------------------------------------------------------ lifecycle
     async def async_start(self) -> None:
+        await self._async_resume_episode()
         self._unsubs.append(
             async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=60))
         )
@@ -243,11 +254,23 @@ class ExperimentalRunner:
             )
         )
         self._unsubs.append(async_at_started(self.hass, self._async_on_started))
+        # Config entries aren't unloaded on shutdown, so async_stop doesn't run then
+        self._stop_unsub = self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._async_on_stop)
 
     async def async_stop(self) -> None:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+        if self._stop_unsub is not None:
+            self._stop_unsub()
+            self._stop_unsub = None
+        if self._episode is not None:
+            await self._async_save_episode()
+
+    async def _async_on_stop(self, _event: Event) -> None:
+        self._stop_unsub = None  # a fired once-listener must not be removed again
+        if self._episode is not None:
+            await self._async_save_episode()
 
     async def _async_on_started(self, _hass: HomeAssistant) -> None:
         await self._async_resume_night()
@@ -263,7 +286,8 @@ class ExperimentalRunner:
 
     # ------------------------------------------------------------- episodes
     async def _async_tick(self, _now: Any = None) -> None:
-        s = self._sample()
+        room_id = self._episode["room_id"] if self._episode else None
+        s = self._sample(room_id)
         ch_enabled = self._any_heating()
         raised = self._last_target is not None and s["target"] is not None and s["target"] > self._last_target
         self._last_target = s["target"]
@@ -280,7 +304,9 @@ class ExperimentalRunner:
                     "samples": [s],
                     "reason": "target_raised" if raised else "cooled_down",
                     "reached": None,
+                    "room_id": self.ctl.winner.room_id,
                 }
+                await self._async_save_episode()
             return
 
         episode = self._episode
@@ -304,11 +330,44 @@ class ExperimentalRunner:
             await self._async_finish([])
         elif episode["reached"] is None and n >= tuner_core.MAX_RISE_MIN:
             await self._async_finish([])
+        elif n % EPISODE_SAVE_MIN == 0:
+            await self._async_save_episode()
+
+    async def _async_save_episode(self) -> None:
+        await self._io(
+            store.write_state,
+            self.f_episode_state,
+            {"episode": self._episode, "last_target": self._last_target},
+        )
+
+    async def _async_resume_episode(self) -> None:
+        """Pick up an episode that was in progress before a restart.
+
+        The minutes it missed are filled with its last sample, so sample
+        indices stay minutes (rise time, minutes above target).
+        """
+        saved = await self._io(store.read_state, self.f_episode_state)
+        episode = saved.get("episode")
+        if not episode:
+            return
+        last = episode["samples"][-1]
+        gap = int((dt_util.now() - dt_util.parse_datetime(last["t"])).total_seconds() // 60)
+        if gap > EPISODE_MAX_GAP_MIN:
+            _LOGGER.info(
+                "Dropped episode started %s: %d minutes without samples", episode["samples"][0]["t"], gap
+            )
+            await self._io(store.write_state, self.f_episode_state, {})
+            return
+        episode["samples"].extend([dict(last) for _ in range(max(gap - 1, 0))])
+        self._episode = episode
+        self._last_target = saved.get("last_target")
+        _LOGGER.info("Resumed episode started %s after %d minutes", episode["samples"][0]["t"], gap)
 
     async def _async_finish(self, extra_reasons: list[str]) -> None:
         ep, self._episode = self._episode, None
         if ep is None:
             return
+        await self._io(store.write_state, self.f_episode_state, {})
         params = self._params()
         record = tuner_core.analyse(ep["samples"], params, ep["reason"], extra_reasons, self.tuned_areas)
         await self._io(store.append_episode, self.f_episodes, record)
