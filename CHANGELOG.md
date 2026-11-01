@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Fix:** right after a restart, with the only heating room exactly at its target, the heat source's current temperature (and `sensor.<system>_winning_room_temperature`) stayed unknown until the room moved 0.1 °C. A room at target now fills it, as an overshooting room already did.
+- **Fix:** with no room calling for heat and the heating room exactly at its target, the heat source's current temperature (and `sensor.<system>_winning_room_temperature`) was not taken from that room. It kept the previous winner's value, which could be another room's stale temperature, or stayed unknown right after a restart until the room moved 0.1 °C. A room at target now fills it, as an overshooting room already did.
 
 ## 1.3.0
 
