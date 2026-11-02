@@ -16,6 +16,7 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.cloudless_multiroom_thermostat.const import DOCS_EXPERIMENTAL_URL, DOMAIN
+from custom_components.cloudless_multiroom_thermostat.experimental import night_core, tuner_core
 from custom_components.cloudless_multiroom_thermostat.experimental import runner as runner_mod
 
 from .test_integration import HALLWAY, LIVING, OFFICE, SYSTEM, _states
@@ -196,6 +197,7 @@ async def test_warm_up_episode_recorded(hass: HomeAssistant) -> None:
     assert len(records) == 1
     record = records[0]
     assert record["area"] == "Living" and record["room_class"] == "living"
+    assert record["room_id"] == _living_id(entry)
     assert record["rise_min"] is not None and record["flame_starts"] >= 1
     # The episode follows the room, not the winner that turned Off at target
     assert record["overshoot"] is not None and record["overshoot"] > 0
@@ -465,3 +467,63 @@ async def test_dhw_rate_setting_over_measured_over_default(hass: HomeAssistant) 
     await hass.async_block_till_done()
     runner = entry.runtime_data.experimental
     assert runner._dhw_rate(stored)["source"] == "setting" and runner._dhw_rate(stored)["rate"] == 0.02
+
+
+def _samples(area: str = "Living", minutes: int = 40) -> list[dict]:
+    return [
+        {
+            "t": f"2026-11-01T07:{m:02d}:00+01:00",
+            "target": 20.0,
+            "room": 19.0 + m * 0.05,
+            "area": area,
+            "flame": True,
+            "dhw": False,
+            "water": 50.0,
+            "outdoor": 5.0,
+            "integral": None,
+            "garden_paused": False,
+        }
+        for m in range(minutes)
+    ]
+
+
+def test_episode_room_matched_by_id() -> None:
+    """other_room follows the room id of the "Room to follow" option, not a room name."""
+    followed = tuner_core.analyse(_samples(), {}, "cooled_down", room_id="a", followed_room_id="a")
+    assert followed["room_id"] == "a" and followed["room_class"] == "living"
+    assert "other_room" not in followed["invalid_reasons"]
+
+    other = tuner_core.analyse(_samples("Bedroom"), {}, "cooled_down", room_id="b", followed_room_id="a")
+    assert other["room_id"] == "b" and other["room_class"] == "other"
+    assert "other_room" in other["invalid_reasons"]
+
+    # No leading room recorded: never counts
+    unknown = tuner_core.analyse(_samples(), {}, "cooled_down", room_id=None, followed_room_id=None)
+    assert "other_room" in unknown["invalid_reasons"]
+
+
+def _warmup(day: int, room_id: str | None, area: str) -> dict:
+    record = {
+        "start": f"2026-10-{day:02d}T06:00:00+01:00",
+        "area": area,
+        "target": 21.0,
+        "start_temp": 18.0,
+        "rise_min": 60,
+        "outdoor_band": "0_8",
+        "invalid_reasons": [],
+    }
+    if room_id is not None:
+        record["room_id"] = room_id
+    return record
+
+
+def test_warmup_rate_matches_room_id_and_legacy_name() -> None:
+    episodes = [
+        _warmup(1, None, "Living Room"),  # copied pyscript history: name only
+        _warmup(2, None, "living room"),  # name match ignores case
+        _warmup(3, "a", "Lounge"),  # same room, renamed since: id wins
+        _warmup(4, "b", "Living Room"),  # another room that had the same name
+        _warmup(5, None, "Bedroom"),
+    ]
+    rate, n, _ = night_core.warmup_rate(episodes, room_id="a", room_name="Living Room")
+    assert n == 3 and rate == pytest.approx(0.05)

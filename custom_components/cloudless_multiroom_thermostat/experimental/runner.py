@@ -163,10 +163,6 @@ class ExperimentalRunner:
             return self.ctl.rooms[room_id]
         return next(iter(self.ctl.rooms.values()), None)
 
-    @property
-    def tuned_areas(self) -> tuple[str, ...]:
-        return (self.room.name,) if self.room else ()
-
     # ------------------------------------------------------------- readers
     def _float(self, key: str, scale: float = 1.0) -> float | None:
         entity_id = self._entity(key)
@@ -369,7 +365,14 @@ class ExperimentalRunner:
             return
         await self._io(store.write_state, self.f_episode_state, {})
         params = self._params()
-        record = tuner_core.analyse(ep["samples"], params, ep["reason"], extra_reasons, self.tuned_areas)
+        record = tuner_core.analyse(
+            ep["samples"],
+            params,
+            ep["reason"],
+            extra_reasons,
+            room_id=ep.get("room_id"),
+            followed_room_id=self.room.room_id if self.room else None,
+        )
         await self._io(store.append_episode, self.f_episodes, record)
         history = await self._io(store.read_episodes, self.f_episodes)
         rec = tuner_core.recommend(history, params) if all(v is not None for v in params.values()) else None
@@ -520,7 +523,8 @@ class ExperimentalRunner:
             self._comfort_at(now).isoformat(timespec="seconds"),
             self._float(CONF_EXP_GAS_BEFORE6),
             self._float(CONF_EXP_GAS_AFTER6),
-            room=room.name,
+            room_id=room.room_id,
+            room_name=room.name,
             morning_target=room.warm_temp,
         )
         await self._async_update_night_state(prediction=prediction)

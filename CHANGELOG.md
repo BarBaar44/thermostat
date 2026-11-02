@@ -3,6 +3,8 @@
 ## Unreleased
 
 - **Fix:** with no room calling for heat and the heating room exactly at its target, the heat source's current temperature (and `sensor.<system>_winning_room_temperature`) was not taken from that room. It kept the previous winner's value, which could be another room's stale temperature, or stayed unknown right after a restart until the room moved 0.1 °C. A room at target now fills it, as an overshooting room already did.
+- **Warm-up episodes store the room that led them** (`room_id` in `episodes.jsonl`), and the room to follow is matched by that id instead of its name. Before, renaming the followed room marked its new episodes `other_room` and dropped its history from the night model's warm-up estimate. Older records without `room_id` are still matched by name (now ignoring case).
+- **Cleanup:** removed the leftover "Living Room" defaults from the pyscript days in the learning features code. The integration never used them (it always passes the room chosen under **Room to follow**), but they read as if the room were hard-coded.
 
 ## 1.3.0
 

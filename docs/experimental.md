@@ -84,6 +84,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 - **Why:** the night model and the PID advice study one room in depth. Pick the room where people spend the most time and that leads the heating most often, usually the living room. Its **warm** temperature is the morning target for the night prediction.
 - **Required:** yes, the form always has a value.
 - **Where from:** your own rooms in this integration.
+- **Renaming:** the room is matched by its id, not its name, so renaming it keeps its warm-up history. Each episode in `episodes.jsonl` stores the id of the room that led it (`room_id`). Older records without it, such as copied pyscript history, are matched by room name.
 
 ### Comfort time on weekdays / at weekends
 

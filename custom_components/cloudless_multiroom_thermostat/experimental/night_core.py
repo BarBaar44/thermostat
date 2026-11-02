@@ -250,28 +250,36 @@ def predicted_at(prediction, iso):
     return pts[-1][1] if t - pts[-1][0] <= 120 else None
 
 
-def warmup_rate(episodes, outdoor=None, room="Living Room"):
+def warmup_rate(episodes, outdoor=None, *, room_id, room_name):
     """
-    Median warm-up speed (degC per minute) from living room morning episodes
+    Median warm-up speed (degC per minute) from the followed room's morning episodes
     that reached their target. Warm-ups get slower as it gets colder, so
     mornings in the same outdoor band as `outdoor` are used once there are
     MIN_WARMUPS of them; until then all mornings. Returns (rate, n, band),
     band being None when all mornings were used.
     """
     band = tuner_core.outdoor_band(outdoor) if outdoor is not None else None
-    in_band = _warmup_rates([e for e in episodes if band and e.get("outdoor_band") == band], room)
+    in_band = _warmup_rates([e for e in episodes if band and e.get("outdoor_band") == band], room_id, room_name)
     if len(in_band) >= MIN_WARMUPS:
         return _median(in_band), len(in_band), band
-    rates = _warmup_rates(episodes, room)
+    rates = _warmup_rates(episodes, room_id, room_name)
     if len(rates) < MIN_WARMUPS:
         return None, len(rates), None
     return _median(rates), len(rates), None
 
 
-def _warmup_rates(episodes, room="Living Room"):
+def _is_room(episode, room_id, room_name):
+    """Newer records carry room_id, which survives a rename. Older ones
+    (and the copied pyscript history) only have the room name."""
+    if episode.get("room_id") is not None:
+        return episode["room_id"] == room_id
+    return (episode.get("area") or "").casefold() == (room_name or "").casefold()
+
+
+def _warmup_rates(episodes, room_id, room_name):
     rates = []
     for e in episodes:
-        if e.get("area") != room or not e.get("rise_min"):
+        if not _is_room(e, room_id, room_name) or not e.get("rise_min"):
             continue
         if "garden_doors" in e.get("invalid_reasons", []) or e.get("start_temp") is None:
             continue
@@ -284,7 +292,7 @@ def _warmup_rates(episodes, room="Living Room"):
 
 
 def predict(room_now, now_iso, forecast, nights, episodes, comfort_at, gas_before6=None, gas_after6=None,
-            room="Living Room", morning_target=MORNING_TARGET):
+            *, room_id, room_name, morning_target=MORNING_TARGET):
     """
     Evening prediction for the coming night. Returns a dict that is stored
     and compared with reality the next morning.
@@ -323,7 +331,9 @@ def predict(room_now, now_iso, forecast, nights, episodes, comfort_at, gas_befor
     out["points"] = points
     out["room_at_comfort"] = points[-1][1]
     fc = [(_minutes(f_iso), temp) for f_iso, temp in forecast if temp is not None]
-    rate, n_warm, band = warmup_rate(episodes, _outdoor_at(fc, _minutes(comfort_at)), room)
+    rate, n_warm, band = warmup_rate(
+        episodes, _outdoor_at(fc, _minutes(comfort_at)), room_id=room_id, room_name=room_name
+    )
     out["warmups_used"] = n_warm
     out["warmup_band"] = band
     if rate:

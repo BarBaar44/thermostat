@@ -24,10 +24,11 @@ FLAME_STARTS_PER_HOUR = 6  # more than this is short-cycling
 CONSISTENT_EPISODES = 2    # this many valid episodes in a row must agree
 STEP = 0.10                # 10 % parameter step
 
-# Only episodes led by these rooms are used for tuning. Other rooms lead
-# rarely; their episodes are still recorded (reason "other_room") so we can
-# judge later whether they need parameters of their own.
-TUNED_AREAS = ("Living Room",)
+# Only episodes led by the followed room (the "Room to follow" option, matched
+# by room id) are used for tuning. Other rooms' episodes are still recorded
+# (reason "other_room") so we can judge later whether they need parameters of
+# their own. The class name "living" is what the records store for the
+# followed room; it is kept so older records group with new ones.
 
 LIMITS = {"kp": (0.3, 1.5), "ki": (0.0005, 0.01), "kd": (0.0, 2000.0)}
 
@@ -43,12 +44,16 @@ def outdoor_band(temp):
     return "above_15"
 
 
-def room_class(area, tuned_areas=TUNED_AREAS):
-    return "living" if area in tuned_areas else "other"
+def room_class(room_id, followed_room_id):
+    return "living" if room_id is not None and room_id == followed_room_id else "other"
 
 
-def analyse(samples, params, start_reason, extra_reasons=(), tuned_areas=TUNED_AREAS):
-    """Turn one episode's samples into a record for episodes.jsonl."""
+def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followed_room_id):
+    """Turn one episode's samples into a record for episodes.jsonl.
+
+    room_id is the room that led the episode, followed_room_id the room the
+    advice learns from.
+    """
     first = samples[0]
     target = first["target"]
     reasons = list(extra_reasons)
@@ -79,7 +84,7 @@ def analyse(samples, params, start_reason, extra_reasons=(), tuned_areas=TUNED_A
 
     if len(samples) < MIN_EPISODE_MIN:
         reasons.append("too_short")
-    if first["area"] not in tuned_areas:
+    if room_id is None or room_id != followed_room_id:
         reasons.append("other_room")
     # "Off" is not another room: Delta Temperature reports it as soon as the
     # leading room reaches its target, which every successful warm-up does
@@ -99,8 +104,9 @@ def analyse(samples, params, start_reason, extra_reasons=(), tuned_areas=TUNED_A
         "start": first["t"],
         "end": samples[-1]["t"],
         "start_reason": start_reason,
+        "room_id": room_id,
         "area": first["area"],
-        "room_class": room_class(first["area"], tuned_areas),
+        "room_class": room_class(room_id, followed_room_id),
         "target": target,
         "start_temp": first["room"],
         "outdoor_avg": outdoor_avg,
