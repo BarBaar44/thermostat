@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Warm-up episodes store the room that led them** (`room_id` in `episodes.jsonl`), and the room to follow is matched by that id instead of its name. Before, renaming the followed room marked its new episodes `other_room` and dropped its history from the night model's warm-up estimate. Older records without `room_id` are still matched by name (now ignoring case).
+- **Cleanup:** removed the leftover "Living Room" defaults from the pyscript days in the learning features code. The integration never used them (it always passes the room chosen under **Room to follow**), but they read as if the room were hard-coded.
+
 ## 1.3.0
 
 - **Fix:** warm-up episodes were never judged. The tuner sampled the winning room, and the winner turns Off (target = off temperature) the moment the room reaches its target, so an episode never saw the target reached: it ran for 4 hours and was recorded as invalid (`target_changed`, `target_not_reached`, no overshoot). An episode now follows the room that led it from the start.
