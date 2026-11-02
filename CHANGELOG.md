@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** with no room calling for heat and the heating room exactly at its target, the heat source's current temperature (and `sensor.<system>_winning_room_temperature`) was not taken from that room. It kept the previous winner's value, which could be another room's stale temperature, or stayed unknown right after a restart until the room moved 0.1 °C. A room at target now fills it, as an overshooting room already did.
+
 ## 1.3.0
 
 - **Fix:** warm-up episodes were never judged. The tuner sampled the winning room, and the winner turns Off (target = off temperature) the moment the room reaches its target, so an episode never saw the target reached: it ran for 4 hours and was recorded as invalid (`target_changed`, `target_not_reached`, no overshoot). An episode now follows the room that led it from the start.
