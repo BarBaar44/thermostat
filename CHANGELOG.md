@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Progress check, PID advice:** a change of the PID values by hand now counts in every outdoor band it runs in, not only in the band of the first warm-up after it. There is one set of PID values for all weather, so one change could never confirm the 2 bands the exit criterion asks for; now it can once the weather has varied. Per band the warm-ups on the new values are compared with the 5 before the change in that band, with the same boiler flow limit. [Exit criteria](docs/experimental.md#when-a-feature-becomes-stable) reworded to match.
+
 - **Fix:** changing **Room to follow** mixed the old room's history into the new one's. PID advice and the progress check grouped warm-ups by a marker stamped when each was recorded, and nights stored no room at all. They now use the room followed now, matched by id (by name for older records): the old room's warm-ups and nights no longer count, and the new room's warm-ups recorded as `other_room` count again. New nights store their `room_id`; a night in progress when the room changes is dropped.
 
 ## 1.4.1

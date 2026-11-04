@@ -24,10 +24,10 @@ Most of what keeps a feature from stable is not waiting for data but proof: does
 |---|---|---|
 | Gas per degree-day | A full year of data (so a whole heating season), and with the boiler signals set, a measured (or set) hot-water rate | Serve as the official check for the other features |
 | Night cooldown model | At least 30 predicted nights spread over 3 or more outdoor bands, average error 0.3 °C or less, no night off by more than 0.6 °C | Optimum start: begin heating at the predicted time |
-| Warm-up episodes and PID advice | PID values changed by hand in at least 2 outdoor bands, each followed by 5 or more valid episodes of the followed room with less overshoot or a faster warm-up on average than the 5 before, and gas per degree-day not worse | Set the PID values per outdoor band (gain scheduling) |
+| Warm-up episodes and PID advice | PID values changed by hand, confirmed in at least 2 outdoor bands: in each band, 5 or more valid episodes of the followed room after the change with less overshoot or a faster warm-up on average than the 5 before it in that band, and gas per degree-day not worse | Set the PID values per outdoor band (gain scheduling) |
 | Evening report | The features it reports on are stable | Stay as it is |
 
-The night model counts its last 30 valid nights that had a prediction. A change by hand is noticed when the Kp, Ki or Kd of an episode differ from the episode before; the band is the one the first episode after the change ran in. Whether gas per degree-day got worse is left to you: one change does not move it enough to tell automatically.
+The night model counts its last 30 valid nights that had a prediction. A change by hand is noticed when the Kp, Ki or Kd of an episode differ from the episode before. There is one set of PID values for all weather, so a change is judged in every band it runs in: per band, its episodes on the new values against the 5 before the change in that band. One change can confirm both bands once the weather has varied; a later change replaces it. Whether gas per degree-day got worse is left to you: one change does not move it enough to tell automatically.
 
 The [evening report](#evening-report) shows where each feature stands against these numbers. They are a starting point and may be adjusted as more data comes in.
 
