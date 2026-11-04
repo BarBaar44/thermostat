@@ -16,9 +16,13 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
+    async_mock_service,
 )
 
 from custom_components.cloudless_multiroom_thermostat.const import DOMAIN
+from custom_components.cloudless_multiroom_thermostat.controller import HeatingController
+
+_REAL_CALL = HeatingController._call
 
 LIVING = {
     "name": "Living",
@@ -108,7 +112,7 @@ async def setup(hass: HomeAssistant):
     _states(hass)
     calls = Calls()
 
-    async def _fake_call(self, domain, service, data):
+    async def _fake_call(self, domain, service, data, key=None):
         calls.items.append((domain, service, dict(data)))
 
     entry = MockConfigEntry(
@@ -313,7 +317,7 @@ async def test_switch_heat_source_hysteresis(hass: HomeAssistant) -> None:
     hass.states.async_set("switch.boiler", "off")
     calls = Calls()
 
-    async def _fake_call(self, domain, service, data):
+    async def _fake_call(self, domain, service, data, key=None):
         calls.items.append((domain, service, dict(data)))
 
     entry = MockConfigEntry(
@@ -375,7 +379,7 @@ async def test_fresh_external_input_without_value_gets_written(hass: HomeAssista
     hass.states.async_set("number.trv_living_ext", "unknown", {"min": -10, "max": 50, "step": 0.1})
     calls = Calls()
 
-    async def _fake_call(self, domain, service, data):
+    async def _fake_call(self, domain, service, data, key=None):
         calls.items.append((domain, service, dict(data)))
 
     entry = MockConfigEntry(
@@ -481,6 +485,26 @@ async def test_winner_area_comes_from_device_area(hass: HomeAssistant, setup) ->
     assert hass.states.get("sensor.heating_winning_room").attributes["area"] == "Lounge"
 
 
+async def test_trv_that_is_off_is_set_back_to_heat(hass: HomeAssistant, setup) -> None:
+    # The real writer, so the in-flight guard runs; the services are mocked
+    with patch.object(HeatingController, "_call", _REAL_CALL):
+        modes = async_mock_service(hass, "climate", "set_hvac_mode")
+        async_mock_service(hass, "climate", "set_temperature")
+        hass.states.async_set("climate.trv_office", "off", {**TRV_ATTRS, "hvac_modes": ["off", "heat"]})
+        await _tick(hass)
+        assert [(c.data["entity_id"], c.data["hvac_mode"]) for c in modes] == [("climate.trv_office", "heat")]
+        # Another recompute before the TRV reports back doesn't resend it
+        hass.states.async_set("sensor.office_temp", "17.2", {"device_class": "temperature"})
+        await _tick(hass)
+        assert len(modes) == 1
+
+
+async def test_trv_without_heat_mode_is_left_alone(hass: HomeAssistant, setup) -> None:
+    _, calls = setup
+    calls.clear()
+    hass.states.async_set("climate.trv_office", "off", {**TRV_ATTRS, "hvac_modes": ["off", "auto"]})
+    await _tick(hass)
+    assert not [c for c in calls.items if c[1] == "set_hvac_mode"]
 async def test_edited_preset_temperature_applies(hass: HomeAssistant, setup) -> None:
     entry, _ = setup
     await _heat(hass, "climate.living")
