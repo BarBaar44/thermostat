@@ -6,6 +6,7 @@
 - **Fix, gas per degree-day:** the year of daily statistics started at the current time a year ago, so its first day only held a few evening hours and could pull down the hot-water base. It now starts at midnight.
 - The "No burner history" warning for a day whose gas can't be split appears once instead of on every run for six days.
 - Report lines show "-" for a missing value instead of "None" (outside temperature, water max, return avg) or "0.0" (night room temperatures).
+- **Fix:** changing a room's eco or warm temperature in Edit room did nothing while that preset was active: the room kept the old temperature until the preset was selected again. A room on a preset now takes its temperature from the room settings after an edit or a restart, and a manual target is kept within a changed minimum and maximum.
 - **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
