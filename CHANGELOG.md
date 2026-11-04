@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Docs:** the README and the heat source field now say which temperature the heat source regulates on. The Climate and OTGW heat sources only receive the winning room's target; multi-room control needs a thermostat that also regulates on the **Winning room temperature** sensor, as the ESPHome PID in `thermostat.yaml` does. A thermostat on its own built-in sensor, or an OTGW, follows the temperature where it hangs. See [Which temperature the heat source regulates on](README.md#process-value).
+
 ## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.
