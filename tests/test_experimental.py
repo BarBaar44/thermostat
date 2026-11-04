@@ -810,6 +810,30 @@ async def test_report_shows_boiler_setting_change(hass: HomeAssistant) -> None:
     assert "Boiler settings changed" not in created[3]
 
 
+async def test_stored_values_shown_after_reload(hass: HomeAssistant) -> None:
+    from custom_components.cloudless_multiroom_thermostat.experimental import store
+
+    entry = await _setup(hass, EXP)
+    runner = entry.runtime_data.experimental
+    store.append_episode(runner.f_episodes, {"start": "2026-11-04T06:30:00+01:00", "area": "Living", "overshoot": 0.3})
+    store.write_state(
+        runner.f_state,
+        {"recommendation": {"param": "ki", "old": 0.003, "new": 0.0027, "why": "overshoot", "at_limit": False}},
+    )
+    store.write_state(
+        runner.f_night_state,
+        {"prediction": {
+            "suggested_start": "2026-11-05T06:41:00+01:00", "comfort_at": "2026-11-05T07:30:00+01:00",
+            "room_at_comfort": 17.1, "warmup_min": 49, "tau_h": 40.0, "evening_drop": -0.8, "outdoor_min": 3.0,
+            "nights_used": 7, "warmups_used": 4, "gas_before6": None, "gas_after6": None,
+        }},
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.heating_last_warm_up_overshoot").state == "0.3"
+    assert hass.states.get("sensor.heating_pid_advice").state == "ki 0.003 -> 0.0027 (overshoot)"
+    night = hass.states.get("sensor.heating_night_prediction")
+    assert night.state == "06:41" and night.attributes["warmup_min"] == 49
 async def test_unreadable_learning_file_does_not_block_heating(hass: HomeAssistant) -> None:
     entry = await _setup(hass, {})
     folder = os.path.join(hass.config.config_dir, DOMAIN, entry.entry_id)
