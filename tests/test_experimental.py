@@ -450,12 +450,16 @@ async def test_forecast_retry_replaces_report_when_it_works(hass: HomeAssistant)
         await runner._async_scheduled_report()
         saved = json.load(open(runner.f_night_state, encoding="utf-8"))
         assert saved["prediction"]["outdoor_min"] is None
+        first = saved["prediction"]
         assert [d for d, _ in retries] == [timedelta(hours=1)]
         await retries[0][1](dt_util.utcnow())
     assert len(asked) == 2 and len(retries) == 1  # worked: no further retry
     assert len(created) == 2  # the report is replaced
     saved = json.load(open(runner.f_night_state, encoding="utf-8"))
     assert saved["prediction"]["outdoor_min"] == 5.0
+    # The retry predicts as of the first attempt: the evening drop runs from 21:00
+    assert saved["prediction"]["made"] == first["made"]
+    assert saved["prediction"]["room_now"] == first["room_now"]
 
 
 async def test_forecast_retry_stops_after_two_repeats(hass: HomeAssistant) -> None:

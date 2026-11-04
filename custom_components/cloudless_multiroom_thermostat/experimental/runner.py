@@ -519,12 +519,15 @@ class ExperimentalRunner:
         )
         return day.replace(hour=comfort.hour, minute=comfort.minute, second=0, microsecond=0)
 
-    async def _async_predict(self) -> dict[str, Any] | None:
+    async def _async_predict(self, room_now: float | None = None, at: datetime | None = None) -> dict[str, Any] | None:
+        """Predict tonight. room_now and at default to the room temperature and time now."""
         self._forecast_missing = False
         room = self.room
         if room is None:
             return None
-        now = dt_util.now()
+        now = at or dt_util.now()
+        if room_now is None:
+            room_now = room.current
         forecast: list[tuple[str, float | None]] = []
         weather = self._entity(CONF_EXP_WEATHER)
         if weather:
@@ -541,7 +544,7 @@ class ExperimentalRunner:
                 _LOGGER.warning("No hourly forecast from %s: %s", weather, err)
             self._forecast_missing = not forecast
         prediction = night_core.predict(
-            room.current,
+            room_now,
             now.isoformat(timespec="seconds"),
             forecast,
             await self._io(store.read_episodes, self.f_nights),
@@ -758,7 +761,13 @@ class ExperimentalRunner:
 
     async def _async_forecast_retry(self, retries_left: int, _now: Any = None) -> None:
         self._forecast_retry_unsub = None
-        await self._async_predict()
+        # Predict as of 21:00: the learned evening drop runs from 21:00, so
+        # starting from the room temperature now would count part of it twice
+        stored = (await self._io(store.read_state, self.f_night_state)).get("prediction") or {}
+        if stored.get("room_now") is not None and stored.get("made"):
+            await self._async_predict(room_now=stored["room_now"], at=datetime.fromisoformat(stored["made"]))
+        else:
+            await self._async_predict()
         if self._forecast_missing:
             self._schedule_forecast_retry(retries_left)
         else:
