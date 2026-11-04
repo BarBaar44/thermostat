@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Fix, night model:** a night that started after midnight (heating off at 00:30, say) could never be valid: its quiet part was looked for on the next calendar day. The quiet part is now the morning the night runs into. A night that started after 21:00 measured its evening drop from its own start, while the 21:00 prediction applies the drop from 21:00; such nights now record no evening drop but still teach the cooling rate. The model takes the cooling rate and the evening drop from their own last 7 nights.
+- **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
 
