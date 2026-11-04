@@ -184,3 +184,30 @@ climate:
       # stays at the default 1 so cold days can still build up enough heat.
       min_integral: 0
 
+
+# Fail safe: without Home Assistant the room temperature above stops
+# updating, but the heartbeat keeps repeating its last value, so the PID
+# would keep heating towards the last target on a frozen reading. After
+# 5 minutes without an API connection the room temperature is set to
+# unknown; the PID turns its output off when its sensor is NaN. When Home
+# Assistant connects again it sends the current value and the PID resumes.
+# (The API's reboot_timeout, 15 min by default, also ends it, unless set
+# to 0s.)
+interval:
+  - interval: 30s
+    then:
+      - lambda: |-
+          static bool lost = false;
+          static uint32_t lost_since = 0;
+          if (api::global_api_server->is_connected()) {
+            lost = false;
+            return;
+          }
+          if (!lost) {
+            lost = true;
+            lost_since = millis();
+          }
+          if (millis() - lost_since >= 5UL * 60UL * 1000UL && !std::isnan(id(ch_room_temperature).state)) {
+            ESP_LOGW("failsafe", "No Home Assistant for 5 min: room temperature unknown, heating stops");
+            id(ch_room_temperature).publish_state(NAN);
+          }
