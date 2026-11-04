@@ -94,7 +94,7 @@ DEFAULT_DHW_RATE: Final = 0.019  # until measured; measured on one boiler, about
 EXP_SUMMARY_HOUR: Final = 21  # fixed: the night model measures the evening drop from 21:00
 SERVICE_EXPERIMENTAL_REPORT: Final = "experimental_report"
 DOCS_EXPERIMENTAL_URL: Final = (
-    "https://github.com/BarBaar44/thermostat/blob/main/docs/experimental.md"
+    "https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat/blob/main/docs/experimental.md"
 )
 
 # Presets

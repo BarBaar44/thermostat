@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Repository renamed** to [BarBaar44/Cloudless-Multiroom-Thermostat](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat). The documentation and issue links in the integration, the README, the docs and the learning features report point to the new name. GitHub redirects the old URL, but HACS users can update the custom repository to the new one.
+
 ## 1.4.0
 
 - **Boiler settings in the learning features:** two new optional fields on the learning features page, **Boiler maximum flow temperature** (OpenTherm maximum CH setpoint) and **Boiler hot water setpoint**. Both are only read. Each warm-up episode stores the flow limit (`max_ch`); PID advice and the progress check only compare warm-ups with the same limit, so lowering the limit on the boiler is not credited to (or blamed on) the PID values. A warm-up during which the limit changed is skipped (`max_ch_changed`). Each gas day stores both settings (`max_ch`, `dhw_setpoint`). The evening report gets a line when either changed since the last report. Setting the flow limit field starts the advice and the progress check over: older warm-ups without a recorded limit are not compared with new ones. Details: [docs/experimental.md](docs/experimental.md#boiler-maximum-flow-temperature-boiler-hot-water-setpoint).

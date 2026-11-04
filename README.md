@@ -36,7 +36,7 @@ The card's README lists its options, including how to pick the rooms and the boi
 
 Requires Home Assistant 2026.10 or newer.
 
-1. In HACS: **⋮ > Custom repositories**, add `https://github.com/BarBaar44/thermostat` with type **Integration**.
+1. In HACS: **⋮ > Custom repositories**, add `https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat` with type **Integration**.
 2. Install **Cloudless Multiroom Thermostat** and restart Home Assistant.
 3. **Settings > Devices & services > Add integration > Cloudless Multiroom Thermostat.**
 

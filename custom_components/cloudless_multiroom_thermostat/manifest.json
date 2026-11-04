@@ -9,10 +9,10 @@
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/BarBaar44/thermostat",
+  "documentation": "https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat",
   "integration_type": "hub",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/BarBaar44/thermostat/issues",
+  "issue_tracker": "https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat/issues",
   "requirements": [],
   "version": "1.4.0"
 }
