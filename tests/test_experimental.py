@@ -37,7 +37,7 @@ EXP = {
 }
 
 
-async def _calls_noop(self, domain, service, data):
+async def _calls_noop(self, domain, service, data, key=None):
     return None
 
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** a TRV that was switched off (on the device, or by another automation) stayed off for good: the integration only wrote setpoints, which an off TRV ignores, and kept rewriting them. A TRV that reports off and supports heat is now set back to heat. The integration holds rooms off with the off temperature, never with the TRV's off mode, so this doesn't change how rooms switch off.
+
 ## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.
