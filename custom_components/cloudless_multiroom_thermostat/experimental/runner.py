@@ -22,6 +22,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from datetime import time as dt_time
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components import persistent_notification
@@ -32,6 +33,7 @@ from homeassistant.helpers.dispatcher import (
     async_dispatcher_send,
 )
 from homeassistant.helpers.event import (
+    async_call_later,
     async_track_time_change,
     async_track_time_interval,
 )
@@ -76,6 +78,10 @@ if TYPE_CHECKING:
     from ..controller import HeatingController, Room
 
 _LOGGER = logging.getLogger(__name__)
+
+# A missing forecast at 21:00 is tried again this often and this much later
+FORECAST_RETRIES = 2
+FORECAST_RETRY_DELAY = timedelta(hours=1)
 
 MIN_NIGHT_HOURS = 4  # shorter heating pauses are not nights
 EPISODE_SAVE_MIN = 5  # save the episode in progress every this many samples
@@ -151,6 +157,8 @@ class ExperimentalRunner:
         self.values: dict[str, tuple[Any, dict[str, Any]]] = {}
         self._unsubs: list[CALLBACK_TYPE] = []
         self._stop_unsub: CALLBACK_TYPE | None = None
+        self._forecast_retry_unsub: CALLBACK_TYPE | None = None
+        self._forecast_missing = False
         # The episode in progress is saved every few samples and on stop, so a
         # restart (an update) doesn't lose a warm-up; a long gap drops it.
         self._episode: dict[str, Any] | None = None
@@ -272,6 +280,7 @@ class ExperimentalRunner:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+        self._cancel_forecast_retry()
         if self._stop_unsub is not None:
             self._stop_unsub()
             self._stop_unsub = None
@@ -511,6 +520,7 @@ class ExperimentalRunner:
         return day.replace(hour=comfort.hour, minute=comfort.minute, second=0, microsecond=0)
 
     async def _async_predict(self) -> dict[str, Any] | None:
+        self._forecast_missing = False
         room = self.room
         if room is None:
             return None
@@ -529,6 +539,7 @@ class ExperimentalRunner:
                 forecast = [(f["datetime"], f.get("temperature")) for f in response[weather]["forecast"]]
             except Exception as err:  # noqa: BLE001 - no forecast only means no prediction
                 _LOGGER.warning("No hourly forecast from %s: %s", weather, err)
+            self._forecast_missing = not forecast
         prediction = night_core.predict(
             room.current,
             now.isoformat(timespec="seconds"),
@@ -727,7 +738,32 @@ class ExperimentalRunner:
 
     # --------------------------------------------------------------- report
     async def _async_scheduled_report(self, _now: Any = None) -> None:
+        self._cancel_forecast_retry()
         await self.async_report(predict=True)
+        self._schedule_forecast_retry(FORECAST_RETRIES)
+
+    def _cancel_forecast_retry(self) -> None:
+        if self._forecast_retry_unsub is not None:
+            self._forecast_retry_unsub()
+            self._forecast_retry_unsub = None
+
+    def _schedule_forecast_retry(self, retries_left: int) -> None:
+        """Try the prediction again later if the forecast was missing."""
+        if self._forecast_missing and retries_left > 0:
+            self._forecast_retry_unsub = async_call_later(
+                self.hass,
+                FORECAST_RETRY_DELAY,
+                partial(self._async_forecast_retry, retries_left - 1),
+            )
+
+    async def _async_forecast_retry(self, retries_left: int, _now: Any = None) -> None:
+        self._forecast_retry_unsub = None
+        await self._async_predict()
+        if self._forecast_missing:
+            self._schedule_forecast_retry(retries_left)
+        else:
+            # Replace tonight's report with one that has the prediction
+            await self.async_report()
 
     async def async_report(self, predict: bool = False) -> None:
         """Post today's episodes, the night and gas as a persistent notification."""

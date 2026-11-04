@@ -234,6 +234,8 @@ Every evening at 21:00 a persistent notification lists today's warm-up episodes,
 
 The time is fixed at 21:00 because the night model measures the evening drop from 21:00.
 
+If the weather forecast is unavailable at 21:00, the report says there is no prediction and the forecast is tried again at 22:00 and 23:00. When a retry works, the prediction is made from the room temperature at that moment and the report is replaced. A restart of Home Assistant in between cancels the retries.
+
 ## Data and privacy
 
 Everything stays on your Home Assistant. Files are stored in `config/cloudless_multiroom_thermostat/<entry id>/`:
