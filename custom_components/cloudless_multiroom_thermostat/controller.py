@@ -11,10 +11,14 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.climate import (
+    ATTR_HVAC_MODE,
+    ATTR_HVAC_MODES,
     ATTR_MAX_TEMP,
     ATTR_MIN_TEMP,
     ATTR_TARGET_TEMP_STEP,
+    SERVICE_SET_HVAC_MODE,
     SERVICE_SET_TEMPERATURE,
+    HVACMode,
 )
 from homeassistant.components.climate import (
     DOMAIN as CLIMATE_DOMAIN,
@@ -466,10 +470,13 @@ class HeatingController:
         sent = self._sent.get(entity_id)
         return sent is not None and sent[0] == value and time.monotonic() - sent[1] < WRITE_GRACE_S
 
-    async def _call(self, domain: str, service: str, data: dict[str, Any]) -> None:
+    async def _call(
+        self, domain: str, service: str, data: dict[str, Any], key: str | None = None
+    ) -> None:
+        """Issue a write; key tracks it in flight apart from other writes to the entity."""
         entity_id = data[ATTR_ENTITY_ID]
         value = data.get(ATTR_TEMPERATURE, data.get("value", service))
-        self._sent[entity_id] = (value, time.monotonic())
+        self._sent[key or entity_id] = (value, time.monotonic())
         try:
             await self.hass.services.async_call(domain, service, data, blocking=False)
         except Exception as err:  # noqa: BLE001 - a broken device must not stop the loop
@@ -529,6 +536,19 @@ class HeatingController:
         if state is None or state.state == STATE_UNAVAILABLE:
             return
         attrs = state.attributes
+        # The integration holds a room off with the off temperature, never with
+        # hvac mode off: a TRV that is off (on the device, by another automation)
+        # would ignore every setpoint, so it is put back to heat.
+        if state.state == HVACMode.OFF and HVACMode.HEAT in (attrs.get(ATTR_HVAC_MODES) or []):
+            mode_key = f"{entity_id}#hvac_mode"
+            if force or not self._in_flight(mode_key, SERVICE_SET_HVAC_MODE):
+                _LOGGER.info("%s is off, setting it back to heat", entity_id)
+                await self._call(
+                    CLIMATE_DOMAIN,
+                    SERVICE_SET_HVAC_MODE,
+                    {ATTR_ENTITY_ID: entity_id, ATTR_HVAC_MODE: HVACMode.HEAT},
+                    key=mode_key,
+                )
         desired = trv_target(
             target,
             is_winner,

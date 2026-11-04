@@ -4,6 +4,7 @@
 
 - **Docs:** the PID integral field says what to do with a firmware that doesn't report the integral times 100 like ESPHome.
 - Cleanup: an unused comfort time table and a duplicate hot-water rate constant removed, module docstrings and comments that still described the pyscript version or the Delta Temperature template brought up to date. No behaviour change.
+- **Fix:** a TRV that was switched off (on the device, or by another automation) stayed off for good: the integration only wrote setpoints, which an off TRV ignores, and kept rewriting them. A TRV that reports off and supports heat is now set back to heat. The integration holds rooms off with the off temperature, never with the TRV's off mode, so this doesn't change how rooms switch off.
 - **Fix:** changing a room's eco or warm temperature in Edit room did nothing while that preset was active: the room kept the old temperature until the preset was selected again. A room on a preset now takes its temperature from the room settings after an edit or a restart, and a manual target is kept within a changed minimum and maximum.
 - **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
