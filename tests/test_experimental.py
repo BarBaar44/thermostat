@@ -806,3 +806,13 @@ async def test_report_shows_boiler_setting_change(hass: HomeAssistant) -> None:
     assert "hot water 65" not in created[1]  # unavailable is not a change
     assert "Boiler settings changed since the last report: hot water 65 -> 50 degC" in created[2]
     assert "Boiler settings changed" not in created[3]
+
+
+def test_read_episodes_reads_the_whole_history(tmp_path) -> None:
+    from custom_components.cloudless_multiroom_thermostat.experimental import store
+
+    path = str(tmp_path / "episodes.jsonl")
+    for i in range(450):  # more than a year of nights, more than the old cap of 200
+        store.append_episode(path, {"n": i})
+    assert [e["n"] for e in store.read_episodes(path)] == list(range(450))
+    assert [e["n"] for e in store.read_episodes(path, 3)] == [447, 448, 449]

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** the learning features only read the last 200 warm-up episodes and nights, although each file was read in full anyway. With several rooms that is a month or two of warm-ups, so the progress check lost the episodes before a PID change long before it could judge it. The whole history is read now (a year is a few thousand lines, parsed in tens of milliseconds, and only when an episode ends and at 21:00).
+
 ## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.
