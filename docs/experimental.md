@@ -223,7 +223,7 @@ Each episode is judged on time to target (more than 60 minutes is slow), oversho
 
 - **Only episodes led by the room to follow count for advice.** Others are recorded (reason `other_room`).
 - **Disturbed episodes are skipped:** winner or target changed, that room's window paused heating, more than 10 minutes of hot water, the boiler's maximum flow temperature changed, or shorter than 30 minutes.
-- **Advice needs agreement:** the last 2 valid episodes in the same outdoor band and with the same boiler maximum flow temperature (below 0, 0 to 8, 8 to 15, above 15 °C) must point the same way. Then exactly one value moves by 10%: overshoot means lower Ki; swinging or short-cycling means lower Kp; slow without overshoot means raise Kp. Hard limits: Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000.
+- **Advice needs agreement:** the last 2 valid episodes in the same outdoor band (below 0, 0 to 8, 8 to 15, above 15 °C) and with the same boiler maximum flow temperature must point the same way. Then exactly one value moves by 10%: overshoot means lower Ki; swinging or short-cycling means lower Kp; slow without overshoot means raise Kp. Hard limits: Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000.
 - **Advice only appears when Kp, Ki and Kd are all set.** Those limits fit an ESPHome PID climate driving an OpenTherm flow temperature; for another controller they may not make sense.
 
 **Why alpha:** no advice has been applied and checked yet. It says what it *would* do, nothing more.
