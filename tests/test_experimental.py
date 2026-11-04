@@ -414,6 +414,131 @@ async def test_evening_prediction_uses_forecast(hass: HomeAssistant) -> None:
     assert "Tonight" in created[0]
 
 
+async def _forecast_retry_setup(hass: HomeAssistant, fail_times: int, extra: dict | None = None):
+    """A runner whose forecast fails the first fail_times calls, with retries captured."""
+    from homeassistant.core import SupportsResponse
+    from homeassistant.exceptions import ServiceValidationError
+
+    entry = await _setup(hass, {**EXP, "exp_weather": "weather.home", **(extra or {})})
+    asked = []
+
+    async def get_forecasts(call):
+        asked.append(call.data)
+        if len(asked) <= fail_times:
+            raise ServiceValidationError("no entity")
+        start = dt_util.utcnow()
+        return {"weather.home": {"forecast": [
+            {"datetime": (start + timedelta(hours=h)).isoformat(), "temperature": 5.0} for h in range(24)
+        ]}}
+
+    hass.services.async_register("weather", "get_forecasts", get_forecasts, supports_response=SupportsResponse.ONLY)
+    return entry.runtime_data.experimental, asked
+
+
+async def test_forecast_retry_replaces_report_when_it_works(hass: HomeAssistant) -> None:
+    runner, asked = await _forecast_retry_setup(hass, fail_times=1)
+    created, retries = [], []
+
+    def call_later(_hass, delay, action):
+        retries.append((delay, action))
+        return lambda: None
+
+    with (
+        patch.object(runner_mod.persistent_notification, "async_create", side_effect=lambda h, m, **kw: created.append(m)),
+        patch.object(runner_mod, "async_call_later", side_effect=call_later),
+    ):
+        await runner._async_scheduled_report()
+        saved = json.load(open(runner.f_night_state, encoding="utf-8"))
+        assert saved["prediction"]["outdoor_min"] is None
+        first = saved["prediction"]
+        assert first["room_now"] is not None
+        assert [d for d, _ in retries] == [timedelta(hours=1)]
+        # The room cools before the retry; the retry still starts from 21:00
+        for sensor in ("sensor.living_temp", "sensor.office_temp", "sensor.hallway_temp"):
+            hass.states.async_set(sensor, "12.0", {"device_class": "temperature"})
+        await hass.async_block_till_done()
+        await retries[0][1](dt_util.utcnow())
+    assert len(asked) == 2 and len(retries) == 1  # worked: no further retry
+    assert len(created) == 2  # the report is replaced
+    saved = json.load(open(runner.f_night_state, encoding="utf-8"))
+    assert saved["prediction"]["outdoor_min"] == 5.0
+    # The retry predicts as of the first attempt: the evening drop runs from 21:00
+    assert saved["prediction"]["made"] == first["made"]
+    assert saved["prediction"]["room_now"] == first["room_now"]
+
+
+async def test_forecast_retry_stops_after_two_repeats(hass: HomeAssistant) -> None:
+    runner, asked = await _forecast_retry_setup(hass, fail_times=99)
+    created, retries = [], []
+
+    def call_later(_hass, delay, action):
+        retries.append(action)
+        return lambda: None
+
+    with (
+        patch.object(runner_mod.persistent_notification, "async_create", side_effect=lambda h, m, **kw: created.append(m)),
+        patch.object(runner_mod, "async_call_later", side_effect=call_later),
+    ):
+        await runner._async_scheduled_report()
+        await retries[0](dt_util.utcnow())
+        await retries[1](dt_util.utcnow())
+    assert len(asked) == 3 and len(retries) == 2  # 21:00 plus two repeats, then it gives up
+    assert len(created) == 1  # a failed retry doesn't post the report again
+
+
+async def test_no_forecast_retry_when_forecast_works(hass: HomeAssistant) -> None:
+    runner, _asked = await _forecast_retry_setup(hass, fail_times=0)
+    with (
+        patch.object(runner_mod.persistent_notification, "async_create"),
+        patch.object(runner_mod, "async_call_later") as call_later,
+    ):
+        await runner._async_scheduled_report()
+    call_later.assert_not_called()
+
+
+async def test_forecast_retry_keeps_boiler_line(hass: HomeAssistant) -> None:
+    """The replaced report still says the boiler settings changed."""
+    from custom_components.cloudless_multiroom_thermostat.experimental import store
+
+    runner, _asked = await _forecast_retry_setup(hass, fail_times=1, extra={"exp_max_ch": "sensor.max_ch"})
+    hass.states.async_set("sensor.max_ch", "40")
+    store.write_state(runner.f_state, {"boiler": {"max_ch": 47.5}})
+    created, retries = [], []
+
+    def call_later(_hass, delay, action):
+        retries.append(action)
+        return lambda: None
+
+    with (
+        patch.object(runner_mod.persistent_notification, "async_create", side_effect=lambda h, m, **kw: created.append(m)),
+        patch.object(runner_mod, "async_call_later", side_effect=call_later),
+    ):
+        await runner._async_scheduled_report()
+        await retries[0](dt_util.utcnow())
+    assert len(created) == 2
+    line = "Boiler settings changed since the last report: max flow 47.5 -> 40 degC"
+    assert all(line in m for m in created)
+
+
+async def test_manual_report_keeps_boiler_line_for_evening(hass: HomeAssistant) -> None:
+    """A report on demand shows a boiler change but leaves it for the 21:00 report."""
+    from custom_components.cloudless_multiroom_thermostat.experimental import store
+
+    runner, _asked = await _forecast_retry_setup(hass, fail_times=0, extra={"exp_max_ch": "sensor.max_ch"})
+    hass.states.async_set("sensor.max_ch", "40")
+    store.write_state(runner.f_state, {"boiler": {"max_ch": 47.5}})
+    created = []
+    line = "Boiler settings changed since the last report: max flow 47.5 -> 40 degC"
+    with patch.object(runner_mod.persistent_notification, "async_create", side_effect=lambda h, m, **kw: created.append(m)):
+        await runner.async_report()
+        assert store.read_state(runner.f_state)["boiler"] == {"max_ch": 47.5}
+        await runner._async_scheduled_report()
+        assert store.read_state(runner.f_state)["boiler"] == {"max_ch": 40.0}
+        await runner.async_report()
+    assert line in created[0] and line in created[1]
+    assert line not in created[2]
+
+
 def test_split_day_uses_dhw_rate() -> None:
     """In a heating hour the hot-water part is its hot-water minutes at the given rate."""
     from custom_components.cloudless_multiroom_thermostat.experimental import gas_core
@@ -655,13 +780,15 @@ async def test_gas_split_without_boiler_settings(hass: HomeAssistant) -> None:
 
 
 async def test_report_shows_boiler_setting_change(hass: HomeAssistant) -> None:
-    await _setup(hass, {**EXP, **BOILER, "exp_gas": None})
+    entry = await _setup(hass, {**EXP, **BOILER, "exp_gas": None})
+    runner = entry.runtime_data.experimental
     hass.states.async_set("sensor.max_ch", "47.5")
     hass.states.async_set("sensor.dhw_set", "65")
     created = []
 
     async def report():
-        await hass.services.async_call(DOMAIN, "experimental_report", {}, blocking=True)
+        # The 21:00 report: only that one stores the boiler settings
+        await runner._async_scheduled_report()
 
     with patch.object(
         runner_mod.persistent_notification, "async_create", side_effect=lambda h, m, **kw: created.append(m)

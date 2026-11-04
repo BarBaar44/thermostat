@@ -230,9 +230,11 @@ Each episode is judged on time to target (more than 60 minutes is slow), oversho
 
 ## Evening report
 
-Every evening at 21:00 a persistent notification lists today's warm-up episodes, the current PID values and advice, a line when the boiler's maximum flow temperature or hot water setpoint changed since the last report, the last night, tonight's prediction, gas per degree-day and the progress of each feature towards stable, with a link to this page. Call the service `cloudless_multiroom_thermostat.experimental_report` to get it on demand (it then shows the stored prediction instead of making a new one).
+Every evening at 21:00 a persistent notification lists today's warm-up episodes, the current PID values and advice, a line when the boiler's maximum flow temperature or hot water setpoint changed since the last report, the last night, tonight's prediction, gas per degree-day and the progress of each feature towards stable, with a link to this page. Call the service `cloudless_multiroom_thermostat.experimental_report` to get it on demand (it then shows the stored prediction instead of making a new one). "Since the last report" means since the last 21:00 report: a report on demand shows a boiler change but doesn't count as a report, so the evening report still shows it.
 
 The time is fixed at 21:00 because the night model measures the evening drop from 21:00.
+
+If the weather forecast is unavailable at 21:00, the report says there is no prediction and the forecast is tried again at 22:00 and 23:00. When a retry works, the prediction is made as of 21:00 (the room temperature then, with the new forecast) and the report is replaced. A restart of Home Assistant in between cancels the retries.
 
 ## Data and privacy
 
