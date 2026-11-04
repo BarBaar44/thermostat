@@ -257,6 +257,7 @@ class ExperimentalRunner:
     # ------------------------------------------------------------ lifecycle
     async def async_start(self) -> None:
         await self._async_resume_episode()
+        await self._async_publish_stored()
         self._unsubs.append(
             async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=60))
         )
@@ -427,23 +428,38 @@ class ExperimentalRunner:
             return f"{rec['param']} at its limit ({rec['old']}) - {rec['why']}"
         return f"{rec['param']} {rec['old']} -> {rec['new']} ({rec['why']})"
 
-    def _publish_episode(self, record: dict[str, Any], rec: dict[str, Any] | None) -> None:
-        self._set(
-            "last_overshoot",
-            record["overshoot"],
-            {
-                "room": record["area"],
-                "start": record["start"],
-                "rise_min": record["rise_min"],
-                "undershoot": record["undershoot"],
-                "flame_starts": record["flame_starts"],
-                "water_peak": record["water_peak"],
-                "outdoor_avg": record["outdoor_avg"],
-                "valid": record["valid"],
-                "invalid_reasons": record["invalid_reasons"],
-            },
-        )
+    def _publish_episode(self, record: dict[str, Any] | None, rec: dict[str, Any] | None) -> None:
+        if record is not None:
+            # .get: records copied from older versions may lack a field
+            self._set(
+                "last_overshoot",
+                record.get("overshoot"),
+                {
+                    "room": record.get("area"),
+                    "start": record.get("start"),
+                    "rise_min": record.get("rise_min"),
+                    "undershoot": record.get("undershoot"),
+                    "flame_starts": record.get("flame_starts"),
+                    "water_peak": record.get("water_peak"),
+                    "outdoor_avg": record.get("outdoor_avg"),
+                    "valid": record.get("valid"),
+                    "invalid_reasons": record.get("invalid_reasons"),
+                },
+            )
         self._set("recommendation", self._rec_text(rec)[:255], {"mode": "observe"})
+
+    async def _async_publish_stored(self) -> None:
+        """Show the stored last episode, advice and prediction again after a reload or restart.
+
+        Without this the sensors stay unknown until the next episode, or
+        until 21:00 for the prediction, although the values are on disk.
+        """
+        episodes = await self._io(store.read_episodes, self.f_episodes, 1)
+        tuner_state = await self._io(store.read_state, self.f_state)
+        self._publish_episode(episodes[-1] if episodes else None, tuner_state.get("recommendation"))
+        prediction = (await self._io(store.read_state, self.f_night_state)).get("prediction")
+        if prediction:
+            self._publish_prediction(prediction)
 
     # --------------------------------------------------------------- nights
     @callback
@@ -565,12 +581,17 @@ class ExperimentalRunner:
             morning_target=room.warm_temp,
         )
         await self._async_update_night_state(prediction=prediction)
+        self._publish_prediction(prediction)
+        return prediction
+
+    def _publish_prediction(self, prediction: dict[str, Any]) -> None:
+        room = self.room
         self._set(
             "night_prediction",
             prediction["suggested_start"][11:16] if prediction["suggested_start"] else "learning",
             {
                 "mode": "observe",
-                "room": room.name,
+                "room": room.name if room else None,
                 "comfort_at": prediction["comfort_at"],
                 "room_at_comfort": prediction["room_at_comfort"],
                 "warmup_min": prediction["warmup_min"],
@@ -583,7 +604,6 @@ class ExperimentalRunner:
                 "gas_after6": prediction["gas_after6"],
             },
         )
-        return prediction
 
     # ---------------------------------------------------- gas per degree-day
     async def _async_read_gas_days(self) -> dict[str, dict[str, Any]]:
