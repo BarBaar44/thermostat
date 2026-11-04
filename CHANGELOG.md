@@ -6,6 +6,7 @@
 - **Fix, gas per degree-day:** the year of daily statistics started at the current time a year ago, so its first day only held a few evening hours and could pull down the hot-water base. It now starts at midnight.
 - The "No burner history" warning for a day whose gas can't be split appears once instead of on every run for six days.
 - Report lines show "-" for a missing value instead of "None" (outside temperature, water max, return avg) or "0.0" (night room temperatures).
+- **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
 

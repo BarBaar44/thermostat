@@ -8,9 +8,13 @@ are small and written atomically (temp file + rename).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
+import time
 from typing import Any
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def append_episode(path: str, episode: dict[str, Any]) -> None:
@@ -55,7 +59,26 @@ def write_state(path: str, state: dict[str, Any]) -> None:
 
 
 def read_state(path: str) -> dict[str, Any]:
+    """The state in path, or {} when it is missing or unreadable.
+
+    An unreadable file (not JSON, or not an object) is moved aside to
+    <path>.corrupt-<time> so it can be looked at, and the feature starts over
+    instead of failing on every read.
+    """
     if not os.path.exists(path):
         return {}
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            state = json.load(f)
+        if isinstance(state, dict):
+            return state
+        reason = f"holds a {type(state).__name__}, not an object"
+    except (OSError, ValueError) as err:
+        reason = str(err)
+    aside = f"{path}.corrupt-{time.strftime('%Y%m%d-%H%M%S')}"
+    try:
+        os.replace(path, aside)
+    except OSError:
+        aside = "(could not be moved aside)"
+    _LOGGER.warning("Unreadable %s (%s), starting over; old file: %s", path, reason, aside)
+    return {}
