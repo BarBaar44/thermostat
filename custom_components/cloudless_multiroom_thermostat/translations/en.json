@@ -17,7 +17,7 @@
           "hysteresis": "Hysteresis"
         },
         "data_description": {
-          "heat_source_entity": "Switch: the boiler relay. Climate: the ESPHome / DIYLess thermostat climate entity. OTGW: the OpenTherm Gateway climate entity. It receives the winning room target.",
+          "heat_source_entity": "Switch: the boiler relay. Climate: the ESPHome / DIYLess thermostat climate entity. OTGW: the OpenTherm Gateway climate entity. It receives the winning room target. Climate and OTGW regulate on their own room temperature unless they read the Winning room temperature sensor (the ESPHome PID in thermostat.yaml does); see Which temperature the heat source regulates on in the README.",
           "ch_switch": "Optional. Turned on while any room is set to heat, off when no room is.",
           "hysteresis": "Switch only: start when a room is this far below its target, stop when it reaches it."
         }
@@ -57,7 +57,7 @@
           "experimental": "Enable learning features (observe only)"
         },
         "data_description": {
-          "heat_source_entity": "Switch: the boiler relay. Climate: the ESPHome / DIYLess thermostat climate entity. OTGW: the OpenTherm Gateway climate entity. It receives the winning room target.",
+          "heat_source_entity": "Switch: the boiler relay. Climate: the ESPHome / DIYLess thermostat climate entity. OTGW: the OpenTherm Gateway climate entity. It receives the winning room target. Climate and OTGW regulate on their own room temperature unless they read the Winning room temperature sensor (the ESPHome PID in thermostat.yaml does); see Which temperature the heat source regulates on in the README.",
           "ch_switch": "Optional. Turned on while any room is set to heat, off when no room is.",
           "hysteresis": "Switch only: start when a room is this far below its target, stop when it reaches it.",
           "off_temperature": "Sent to the heat source and TRVs when nothing should heat (frost protection).",
