@@ -1,4 +1,4 @@
-<p align="center"><img src="https://raw.githubusercontent.com/BarBaar44/thermostat/main/custom_components/cloudless_multiroom_thermostat/brand/icon@2x.png" alt="Cloudless Multiroom Thermostat logo" width="160"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/BarBaar44/Cloudless-Multiroom-Thermostat/main/custom_components/cloudless_multiroom_thermostat/brand/icon@2x.png" alt="Cloudless Multiroom Thermostat logo" width="160"></p>
 
 # Cloudless Multiroom Thermostat
 
