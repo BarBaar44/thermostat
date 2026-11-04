@@ -204,8 +204,8 @@ Raw gas use per day mostly follows the weather, so it can't show that. The featu
 
 When the heating goes off in the evening (no room that drives the heat source heating any more, between 18:00 and 02:00; a room with **Drives the heat source** off, such as a hallway on eco, doesn't count), a **night** starts. Every 10 minutes it samples the room you chose under **Room to follow**, the outdoor temperature, wind, that room's windows, the sun and how many people are home, until the heating comes back on (or 11:00). Nights shorter than 4 hours are ignored.
 
-- **The quiet part of the night** (from 01:00 until sunrise or until heating starts, windows closed) follows Newton's law of cooling, `dT/dt = -k * (T_room - T_outdoor)`, with time constant tau = 1/k.
-- **The evening does not follow that law.** People, cooking and appliances keep a living room warm for a few hours after the heating stops, then it drops around bedtime. That part is learned as a plain number: the evening drop from 21:00 to 01:00.
+- **The quiet part of the night** (from 01:00 until sunrise or until heating starts, windows closed, on the morning the night runs into: the next day, or the same day for a night that starts after midnight) follows Newton's law of cooling, `dT/dt = -k * (T_room - T_outdoor)`, with time constant tau = 1/k.
+- **The evening does not follow that law.** People, cooking and appliances keep a living room warm for a few hours after the heating stops, then it drops around bedtime. That part is learned as a plain number: the evening drop from 21:00 to 01:00. Only nights during which the heating was already off at 21:00 can measure it (the prediction applies it from 21:00); a night that starts later still teaches the cooling rate.
 
 At 21:00 it takes the hourly forecast and predicts the room temperature at your **comfort time** (weekday and weekend times are settings). From the warm-up speed of earlier morning warm-ups in a similar outdoor temperature, it says when heating would have to start to reach the room's **warm** temperature by then. The next morning the prediction is compared with what really happened.
 

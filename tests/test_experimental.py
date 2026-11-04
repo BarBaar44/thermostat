@@ -806,3 +806,40 @@ async def test_report_shows_boiler_setting_change(hass: HomeAssistant) -> None:
     assert "hot water 65" not in created[1]  # unavailable is not a change
     assert "Boiler settings changed since the last report: hot water 65 -> 50 degC" in created[2]
     assert "Boiler settings changed" not in created[3]
+
+
+def _night_samples(start: str, hours: float, room0: float = 20.0) -> list[dict]:
+    """10-minute night samples from start, cooling 0.05 degC per sample, 5 degC outside."""
+    t0 = dt_util.parse_datetime(start)
+    return [
+        {
+            "t": (t0 + timedelta(minutes=10 * i)).isoformat(timespec="seconds"),
+            "room": round(room0 - 0.05 * i, 2), "outdoor": 5.0, "wind": None,
+            "garden_open": False, "sun_up": False, "people": 2.0,
+        }
+        for i in range(int(hours * 6) + 1)
+    ]
+
+
+def test_night_after_midnight_can_be_valid() -> None:
+    # Heating off at 00:30, back on at 06:30: the quiet part is the same day
+    record = night_core.analyse(_night_samples("2026-11-05T00:30:00+01:00", 6), "heating_on")
+    assert record["valid"], record["invalid_reasons"]
+    assert record["quiet_samples"] >= night_core.MIN_QUIET_SAMPLES
+    assert record["evening_drop"] is None  # the heating was on at 21:00
+
+
+def test_evening_drop_only_when_off_by_21() -> None:
+    early = night_core.analyse(_night_samples("2026-11-04T20:00:00+01:00", 10), "heating_on")
+    # 21:00 is sample 6 (19.70), 01:00 sample 30 (18.50)
+    assert early["evening_drop"] == -1.2
+    late = night_core.analyse(_night_samples("2026-11-04T21:54:00+01:00", 9), "heating_on")
+    assert late["valid"] and late["evening_drop"] is None
+
+
+def test_model_learns_k_from_nights_without_an_evening_drop() -> None:
+    night = {"valid": True, "k": 0.02, "evening_drop": None}
+    assert night_core.model([night, night]) == (None, None, 0)
+    with_drop = {"valid": True, "k": 0.03, "evening_drop": -1.0}
+    k, drop, n = night_core.model([night, night, with_drop, with_drop])
+    assert k == 0.025 and drop == -1.0 and n == 2

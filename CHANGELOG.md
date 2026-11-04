@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fix, night model:** a night that started after midnight (heating off at 00:30, say) could never be valid: its quiet part was looked for on the next calendar day. The quiet part is now the morning the night runs into. A night that started after 21:00 measured its evening drop from its own start, while the 21:00 prediction applies the drop from 21:00; such nights now record no evening drop but still teach the cooling rate. The model takes the cooling rate and the evening drop from their own last 7 nights.
+
 ## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.
