@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** after a restart, or any reload (changing options or a room reloads the integration), the learning sensors were unknown until the next warm-up episode, and the night prediction until 21:00, although their values were stored. **PID advice**, **Last warm-up overshoot** and **Night prediction** now show their stored values again as soon as the integration starts.
+
 ## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.
