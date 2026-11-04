@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Docs:** the PID integral field says what to do with a firmware that doesn't report the integral times 100 like ESPHome.
+- Cleanup: an unused comfort time table and a duplicate hot-water rate constant removed, module docstrings and comments that still described the pyscript version or the Delta Temperature template brought up to date. No behaviour change.
+
 ## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.

@@ -1,8 +1,8 @@
 """
-heating_night_core - night cooldown model for the heating tuner
-----------------------------------------------------------------
-Plain Python with no pyscript or Home Assistant dependencies, like
-heating_tuner_core. Observe only: nothing here controls the heating.
+night_core - night cooldown model
+---------------------------------
+Plain Python with no Home Assistant imports, like tuner_core. Observe only:
+nothing here controls the heating.
 
 A night runs from the moment central heating is switched off in the evening
 until it is switched on again in the morning. It is sampled every 10 minutes.
@@ -43,10 +43,8 @@ K_NIGHTS = 7               # median k over this many recent valid nights
 MIN_NIGHTS = 2             # predictions start after this many valid nights
 MIN_WARMUPS = 2            # warm-up estimate needs this many morning episodes
 
-# Mirrors the Heating Schedule automation: when the living room should be at
-# MORNING_TARGET. Weekday 0 = Monday.
-COMFORT_TIME = {0: "07:30", 1: "07:30", 2: "07:30", 3: "07:30", 4: "07:30",
-                5: "08:00", 6: "08:00"}
+# Morning target of predictions stored before they recorded their own (the
+# runner passes the followed room's warm temperature)
 MORNING_TARGET = 18.0
 
 
@@ -128,10 +126,12 @@ def analyse(samples, end_reason, prediction=None, gas_start=None, gas_end=None):
     peak = max(rooms) if rooms else None
     hold_min = None
     if peak is not None:
-        # pyscript has no generator expressions: list comprehensions only
-        peak_i = [i for i, s in enumerate(samples) if s["room"] == peak][0]
-        drop_i = ([i for i, s in enumerate(samples) if i >= peak_i
-                   and s["room"] is not None and s["room"] <= peak - HOLD_DROP] or [None])[0]
+        peak_i = next(i for i, s in enumerate(samples) if s["room"] == peak)
+        drop_i = next(
+            (i for i, s in enumerate(samples)
+             if i >= peak_i and s["room"] is not None and s["room"] <= peak - HOLD_DROP),
+            None,
+        )
         if drop_i is not None:
             hold_min = int(round(_minutes(samples[drop_i]["t"]) - _minutes(first["t"])))
 

@@ -234,7 +234,8 @@ class ExperimentalRunner:
             "outdoor": self._float(CONF_EXP_OUTDOOR),
             # ESPHome reports the PID terms x100
             "integral": self._float(CONF_EXP_INTEGRAL, 0.01),
-            # Kept as "garden_paused" so records match the pyscript version
+            # Kept as "garden_paused" (and garden_open / garden_doors in nights)
+            # so records match older ones; it means any window of the followed room
             "garden_paused": bool(room and self.ctl.pause_reason(room) == PAUSE_WINDOW),
             "gas": self._float(CONF_EXP_GAS),
         }
