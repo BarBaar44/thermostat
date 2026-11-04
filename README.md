@@ -49,6 +49,8 @@ Requires Home Assistant 2026.10 or newer.
    - **On/off switch**: a relay boiler. It turns on when a room is the hysteresis (default 0.3 °C) below its target and off when every room reached its target.
    - **Climate entity**: an ESPHome or DIYLess OpenTherm thermostat, or any thermostat with a setpoint. It receives the target of the room that needs heat most.
    - **OpenTherm Gateway (OTGW)**: the OTGW climate entity, which receives that same target.
+
+   <a id="process-value"></a>**Which temperature the heat source regulates on.** The Climate and OTGW heat sources only receive the winning room's *target*. For real multi-room control the thermostat must also regulate on the winning room's *temperature*, the integration's **Winning room temperature** sensor. The ESPHome PID in [`thermostat.yaml`](#esphome-opentherm-thermostat-thermostatyaml) does. A thermostat that regulates on its own built-in sensor, and an OTGW (which regulates on the room temperature of the thermostat connected to it), compares the winner's target with the temperature where *it* hangs: it stops when that spot is warm, whichever room won, and keeps heating when that spot is cold although every room reached its target. The On/off switch has no such limit: the integration itself decides on and off from the room temperatures.
 2. The heat source entity and, optionally, a **central heating enable** switch that is on while any room is set to heat.
 3. Settings: the **off temperature** sent when nothing needs heat (default 10 °C), an optional **presence** entity with what happens when everybody is away (rooms off, or lowered to eco), and how often room temperatures are resent to TRV inputs.
 
