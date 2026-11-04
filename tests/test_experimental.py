@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from datetime import timedelta
 import json
+import os
 from unittest.mock import patch
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
 
-from homeassistant.config_entries import ConfigSubentryData
+from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.util import dt as dt_util
@@ -18,6 +19,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from custom_components.cloudless_multiroom_thermostat.const import DOCS_EXPERIMENTAL_URL, DOMAIN
 from custom_components.cloudless_multiroom_thermostat.experimental import night_core, tuner_core
 from custom_components.cloudless_multiroom_thermostat.experimental import runner as runner_mod
+from custom_components.cloudless_multiroom_thermostat.experimental import store
 
 from .test_integration import HALLWAY, LIVING, OFFICE, SYSTEM, _states
 
@@ -836,3 +838,37 @@ def test_recommend_follows_the_room_followed_now() -> None:
 def test_for_room_keeps_nights_without_a_room() -> None:
     nights = [{"room_id": "a"}, {"room_id": "b"}, {}]
     assert night_core.for_room(nights, "a") == [{"room_id": "a"}, {}]
+async def test_unreadable_learning_file_does_not_block_heating(hass: HomeAssistant) -> None:
+    entry = await _setup(hass, {})
+    folder = os.path.join(hass.config.config_dir, DOMAIN, entry.entry_id)
+    os.makedirs(folder)
+    path = os.path.join(folder, "episode_state.json")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("{not json")
+    hass.config_entries.async_update_entry(entry, options=EXP)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data.experimental is not None
+    assert not os.path.exists(path)
+    assert any(name.startswith("episode_state.json.corrupt-") for name in os.listdir(folder))
+    assert hass.states.get("climate.living") is not None
+
+
+def test_read_state_sets_a_non_object_aside(tmp_path) -> None:
+    path = tmp_path / "state.json"
+    path.write_text("[1, 2]", encoding="utf-8")
+    assert store.read_state(str(path)) == {}
+    assert not path.exists()
+    assert len(list(tmp_path.glob("state.json.corrupt-*"))) == 1
+
+
+async def test_learning_start_failure_keeps_heating(hass: HomeAssistant) -> None:
+    with patch.object(runner_mod.ExperimentalRunner, "_async_resume_episode", side_effect=RuntimeError("boom")):
+        entry = await _setup(hass, EXP)
+    assert entry.state is ConfigEntryState.LOADED
+    await hass.services.async_call(
+        "climate", "set_hvac_mode", {"entity_id": "climate.living", "hvac_mode": "heat"}, blocking=True
+    )
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=3))
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.heating_winning_room").state == "Living"
