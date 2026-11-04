@@ -414,12 +414,12 @@ async def test_evening_prediction_uses_forecast(hass: HomeAssistant) -> None:
     assert "Tonight" in created[0]
 
 
-async def _forecast_retry_setup(hass: HomeAssistant, fail_times: int):
+async def _forecast_retry_setup(hass: HomeAssistant, fail_times: int, extra: dict | None = None):
     """A runner whose forecast fails the first fail_times calls, with retries captured."""
     from homeassistant.core import SupportsResponse
     from homeassistant.exceptions import ServiceValidationError
 
-    entry = await _setup(hass, {**EXP, "exp_weather": "weather.home"})
+    entry = await _setup(hass, {**EXP, "exp_weather": "weather.home", **(extra or {})})
     asked = []
 
     async def get_forecasts(call):
@@ -451,7 +451,12 @@ async def test_forecast_retry_replaces_report_when_it_works(hass: HomeAssistant)
         saved = json.load(open(runner.f_night_state, encoding="utf-8"))
         assert saved["prediction"]["outdoor_min"] is None
         first = saved["prediction"]
+        assert first["room_now"] is not None
         assert [d for d, _ in retries] == [timedelta(hours=1)]
+        # The room cools before the retry; the retry still starts from 21:00
+        for sensor in ("sensor.living_temp", "sensor.office_temp", "sensor.hallway_temp"):
+            hass.states.async_set(sensor, "12.0", {"device_class": "temperature"})
+        await hass.async_block_till_done()
         await retries[0][1](dt_util.utcnow())
     assert len(asked) == 2 and len(retries) == 1  # worked: no further retry
     assert len(created) == 2  # the report is replaced
@@ -489,6 +494,30 @@ async def test_no_forecast_retry_when_forecast_works(hass: HomeAssistant) -> Non
     ):
         await runner._async_scheduled_report()
     call_later.assert_not_called()
+
+
+async def test_forecast_retry_keeps_boiler_line(hass: HomeAssistant) -> None:
+    """The replaced report still says the boiler settings changed."""
+    from custom_components.cloudless_multiroom_thermostat.experimental import store
+
+    runner, _asked = await _forecast_retry_setup(hass, fail_times=1, extra={"exp_max_ch": "sensor.max_ch"})
+    hass.states.async_set("sensor.max_ch", "40")
+    store.write_state(runner.f_state, {"boiler": {"max_ch": 47.5}})
+    created, retries = [], []
+
+    def call_later(_hass, delay, action):
+        retries.append(action)
+        return lambda: None
+
+    with (
+        patch.object(runner_mod.persistent_notification, "async_create", side_effect=lambda h, m, **kw: created.append(m)),
+        patch.object(runner_mod, "async_call_later", side_effect=call_later),
+    ):
+        await runner._async_scheduled_report()
+        await retries[0](dt_util.utcnow())
+    assert len(created) == 2
+    line = "Boiler settings changed since the last report: max flow 47.5 -> 40 degC"
+    assert all(line in m for m in created)
 
 
 def test_split_day_uses_dhw_rate() -> None:

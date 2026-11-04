@@ -159,6 +159,9 @@ class ExperimentalRunner:
         self._stop_unsub: CALLBACK_TYPE | None = None
         self._forecast_retry_unsub: CALLBACK_TYPE | None = None
         self._forecast_missing = False
+        # The boiler line of the last report: a report replaced by a forecast
+        # retry shows it again (the settings it compares are already stored)
+        self._boiler_line: str | None = None
         # The episode in progress is saved every few samples and on stop, so a
         # restart (an update) doesn't lose a warm-up; a long gap drops it.
         self._episode: dict[str, Any] | None = None
@@ -772,10 +775,13 @@ class ExperimentalRunner:
             self._schedule_forecast_retry(retries_left)
         else:
             # Replace tonight's report with one that has the prediction
-            await self.async_report()
+            await self.async_report(repost=True)
 
-    async def async_report(self, predict: bool = False) -> None:
-        """Post today's episodes, the night and gas as a persistent notification."""
+    async def async_report(self, predict: bool = False, repost: bool = False) -> None:
+        """Post today's episodes, the night and gas as a persistent notification.
+
+        repost replaces tonight's report and keeps its boiler line.
+        """
         today = dt_util.now().date().isoformat()
         episodes = await self._io(store.read_episodes, self.f_episodes)
         todays = [e for e in episodes if e["start"][:10] == today]
@@ -783,7 +789,8 @@ class ExperimentalRunner:
         rec = tuner_state.get("recommendation")
         p = self._params()
         boiler = {"max_ch": self._float(CONF_EXP_MAX_CH), "dhw_setpoint": self._float(CONF_EXP_DHW_SETPOINT)}
-        boiler_line = tuner_core.boiler_change_line(tuner_state.get("boiler"), boiler)
+        boiler_line = self._boiler_line if repost else tuner_core.boiler_change_line(tuner_state.get("boiler"), boiler)
+        self._boiler_line = boiler_line
         if any(v is not None for v in boiler.values()):
             # Keep the last known value of a setting that is unavailable right now
             known = {**(tuner_state.get("boiler") or {}), **{k: v for k, v in boiler.items() if v is not None}}
