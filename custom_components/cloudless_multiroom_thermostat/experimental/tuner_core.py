@@ -216,7 +216,7 @@ def summary_line(e):
         )
     )
     if e.get("max_ch") is not None:
-        line += ", flow limit {:g}".format(e["max_ch"])
+        line += f", flow limit {e['max_ch']:g}"
     return line
 
 
@@ -232,7 +232,7 @@ def boiler_change_line(before, now):
     """
     before = before or {}
     parts = [
-        "{} {:g} -> {:g} degC".format(label, before[key], now[key])
+        f"{label} {before[key]:g} -> {now[key]:g} degC"
         for key, label in BOILER_SETTINGS
         if before.get(key) is not None and now.get(key) is not None and before[key] != now[key]
     ]
