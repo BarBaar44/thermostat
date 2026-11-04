@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **ESPHome fail safe (`thermostat.yaml`):** after 5 minutes without a Home Assistant connection the PID's room temperature is set to unknown, so the PID stops heating. Before, the 1 second heartbeat kept repeating the last value and the PID kept heating towards the last target until the API's reboot timeout (15 min by default, never when set to 0s). It resumes as soon as Home Assistant connects again. Reflash the thermostat to use it.
+
 ## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.
