@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Fix:** changing **Room to follow** mixed the old room's history into the new one's. PID advice and the progress check grouped warm-ups by a marker stamped when each was recorded, and nights stored no room at all. They now use the room followed now, matched by id (by name for older records): the old room's warm-ups and nights no longer count, and the new room's warm-ups recorded as `other_room` count again. New nights store their `room_id`; a night in progress when the room changes is dropped.
+- **Fix:** changing a room's eco or warm temperature in Edit room did nothing while that preset was active: the room kept the old temperature until the preset was selected again. A room on a preset now takes its temperature from the room settings after an edit or a restart, and a manual target is kept within a changed minimum and maximum.
 - **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
