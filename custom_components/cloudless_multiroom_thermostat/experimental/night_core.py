@@ -343,12 +343,17 @@ def predict(room_now, now_iso, forecast, nights, episodes, comfort_at, gas_befor
     return out
 
 
+def _temp(value):
+    """One decimal, "-" when missing (was shown as 0.0)."""
+    return "-" if value is None else f"{value:.1f}"
+
+
 def night_line(n):
     """One human-readable line about last night for the daily notification."""
     start = n["start"][11:16]
     end = n["end"][11:16]
-    base = "- Night {}-{}: {:.1f} -> {:.1f} degC (outside avg {}, people home in the evening {}), evening hold {} min, evening drop {}".format(
-        start, end, n["room_start"] or 0, n["room_end"] or 0, n["outdoor_avg"],
+    base = "- Night {}-{}: {} -> {} degC (outside avg {}, people home in the evening {}), evening hold {} min, evening drop {}".format(
+        start, end, _temp(n["room_start"]), _temp(n["room_end"]), "-" if n["outdoor_avg"] is None else n["outdoor_avg"],
         n["people_evening"] if n.get("people_evening") is not None else "-",
         n["hold_min"] if n["hold_min"] is not None else "-",
         "{:+.1f}".format(n["evening_drop"]) if n.get("evening_drop") is not None else "-")

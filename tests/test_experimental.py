@@ -806,3 +806,43 @@ async def test_report_shows_boiler_setting_change(hass: HomeAssistant) -> None:
     assert "hot water 65" not in created[1]  # unavailable is not a change
     assert "Boiler settings changed since the last report: hot water 65 -> 50 degC" in created[2]
     assert "Boiler settings changed" not in created[3]
+
+
+async def test_gas_window_starts_at_midnight_and_warns_once(hass: HomeAssistant, caplog) -> None:
+    entry = await _setup(hass, EXP)
+    runner = entry.runtime_data.experimental
+    now = dt_util.now()
+    day0 = dt_util.start_of_local_day(now) - timedelta(days=1)
+    starts = []
+
+    async def fake_stats(ids, start, end, period, types):
+        starts.append((period, start))
+        if period == "hour":  # gas used, but no burner history at all
+            return {"sensor.gas": [{"start": (day0 + timedelta(hours=h)).timestamp(), "change": 0.1} for h in range(24)]}
+        return {}
+
+    async def fake_history(ids, start, end):
+        return {}
+
+    with patch.object(runner, "_async_statistics", side_effect=fake_stats), patch.object(
+        runner, "_async_history", side_effect=fake_history
+    ):
+        await runner._async_gas_summary()
+        await runner._async_gas_summary()
+    day_start = next(start for period, start in starts if period == "day")
+    assert day_start == dt_util.start_of_local_day(now - timedelta(days=365))
+    warnings = [r for r in caplog.records if "No burner history" in r.message and r.levelname == "WARNING"]
+    assert len(warnings) == 1
+
+
+def test_report_lines_show_a_dash_for_missing_values() -> None:
+    e = tuner_core.analyse(_samples(), {}, "cooled_down", room_id="a", followed_room_id="a")
+    e = {**e, "outdoor_avg": None, "water_peak": None, "return_avg": None}
+    line = tuner_core.summary_line(e)
+    assert "None" not in line and "outside - degC" in line and "return avg -" in line
+    night = {
+        "start": "2026-11-04T20:00:00+01:00", "end": "2026-11-05T06:30:00+01:00", "room_start": None,
+        "room_end": 18.25, "outdoor_avg": None, "people_evening": None, "hold_min": None,
+        "evening_drop": None, "valid": False, "invalid_reasons": ["too_short"], "prediction_error": None,
+    }
+    assert night_core.night_line(night).startswith("- Night 20:00-06:30: - -> 18.2 degC (outside avg -,")

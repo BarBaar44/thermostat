@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** an on/off (switch) heat source kept running for a room 0.01 °C below target, which the winner and the room role already round to 0.0 (no demand). The switch now rounds the gap the same way.
+- **Fix, gas per degree-day:** the year of daily statistics started at the current time a year ago, so its first day only held a few evening hours and could pull down the hot-water base. It now starts at midnight.
+- The "No burner history" warning for a day whose gas can't be split appears once instead of on every run for six days.
+- Report lines show "-" for a missing value instead of "None" (outside temperature, water max, return avg) or "0.0" (night room temperatures).
+
 ## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.
