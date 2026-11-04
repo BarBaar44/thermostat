@@ -448,11 +448,12 @@ async def test_forecast_retry_replaces_report_when_it_works(hass: HomeAssistant)
         patch.object(runner_mod, "async_call_later", side_effect=call_later),
     ):
         await runner._async_scheduled_report()
-        assert "no prediction" in created[0]
+        saved = json.load(open(runner.f_night_state, encoding="utf-8"))
+        assert saved["prediction"]["outdoor_min"] is None
         assert [d for d, _ in retries] == [timedelta(hours=1)]
         await retries[0][1](dt_util.utcnow())
     assert len(asked) == 2 and len(retries) == 1  # worked: no further retry
-    assert len(created) == 2 and "no prediction" not in created[1]
+    assert len(created) == 2  # the report is replaced
     saved = json.load(open(runner.f_night_state, encoding="utf-8"))
     assert saved["prediction"]["outdoor_min"] == 5.0
 
@@ -476,7 +477,7 @@ async def test_forecast_retry_stops_after_two_repeats(hass: HomeAssistant) -> No
     assert len(created) == 1  # a failed retry doesn't post the report again
 
 
-async def test_no_forecast_retry_when_forecast_works_or_is_not_set(hass: HomeAssistant) -> None:
+async def test_no_forecast_retry_when_forecast_works(hass: HomeAssistant) -> None:
     runner, _asked = await _forecast_retry_setup(hass, fail_times=0)
     with (
         patch.object(runner_mod.persistent_notification, "async_create"),
