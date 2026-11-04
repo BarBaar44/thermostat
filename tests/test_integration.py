@@ -505,3 +505,23 @@ async def test_trv_without_heat_mode_is_left_alone(hass: HomeAssistant, setup) -
     hass.states.async_set("climate.trv_office", "off", {**TRV_ATTRS, "hvac_modes": ["off", "auto"]})
     await _tick(hass)
     assert not [c for c in calls.items if c[1] == "set_hvac_mode"]
+async def test_edited_preset_temperature_applies(hass: HomeAssistant, setup) -> None:
+    entry, _ = setup
+    await _heat(hass, "climate.living")
+    await hass.services.async_call(
+        "climate", "set_preset_mode", {"entity_id": "climate.living", "preset_mode": "eco"}, blocking=True
+    )
+    await hass.services.async_call(
+        "climate", "set_temperature", {"entity_id": "climate.office", "temperature": 21}, blocking=True
+    )
+    await _tick(hass)
+    for title, changes in (("Living", {"eco_temperature": 16.0}), ("Office", {"max_temp": 20.0})):
+        sub = next(s for s in entry.subentries.values() if s.title == title)
+        hass.config_entries.async_update_subentry(entry, sub, data={**sub.data, **changes})
+        await hass.async_block_till_done()
+    await _tick(hass)
+    living = hass.states.get("climate.living")
+    assert living.attributes["preset_mode"] == "eco" and living.attributes["temperature"] == 16.0
+    # A manual target stays manual, within the new maximum
+    office = hass.states.get("climate.office")
+    assert office.attributes["preset_mode"] == "none" and office.attributes["temperature"] == 20.0
