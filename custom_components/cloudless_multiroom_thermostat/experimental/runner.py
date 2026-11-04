@@ -44,6 +44,7 @@ from ..const import (
     CONF_EXP_COMFORT_WEEKEND,
     CONF_EXP_DHW,
     CONF_EXP_DHW_RATE,
+    CONF_EXP_DHW_SETPOINT,
     CONF_EXP_FLAME,
     CONF_EXP_GAS,
     CONF_EXP_GAS_AFTER6,
@@ -52,6 +53,7 @@ from ..const import (
     CONF_EXP_KD,
     CONF_EXP_KI,
     CONF_EXP_KP,
+    CONF_EXP_MAX_CH,
     CONF_EXP_OUTDOOR,
     CONF_EXP_PEOPLE,
     CONF_EXP_RETURN,
@@ -116,6 +118,18 @@ def _num(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _value_at(states: list[Any], when: datetime) -> float | None:
+    """The last numeric state that changed at or before `when` (history is in time order)."""
+    value = None
+    for st in states:
+        if st.last_changed > when:
+            break
+        number = _num(st.state)
+        if number is not None:
+            value = number
+    return value
 
 
 class ExperimentalRunner:
@@ -204,6 +218,7 @@ class ExperimentalRunner:
             "dhw": self._is_on(CONF_EXP_DHW),
             "water": self._float(CONF_EXP_WATER),
             "ret": self._float(CONF_EXP_RETURN),
+            "max_ch": self._float(CONF_EXP_MAX_CH),
             "people": self._float(CONF_EXP_PEOPLE),
             "outdoor": self._float(CONF_EXP_OUTDOOR),
             # ESPHome reports the PID terms x100
@@ -609,6 +624,12 @@ class ExperimentalRunner:
         if not (gas_id and flame and dhw and ch):
             return
         people_id = self._entity(CONF_EXP_PEOPLE)
+        # Boiler settings stored with each day: the value in effect at its end
+        settings = {
+            key: eid
+            for key, eid in (("dhw_setpoint", self._entity(CONF_EXP_DHW_SETPOINT)), ("max_ch", self._entity(CONF_EXP_MAX_CH)))
+            if eid
+        }
         stored = await self._async_read_gas_days()
         midnight = dt_util.start_of_local_day(now)
         window = [(midnight - timedelta(days=n)).date().isoformat() for n in range(SPLIT_DAYS_BACK, 0, -1)]
@@ -618,7 +639,7 @@ class ExperimentalRunner:
             return
         start = _day_start(min(dates + unflagged))
         stats = await self._async_statistics({gas_id}, start, midnight, "hour", {"change"})
-        ids = [ch, dhw, flame] + ([people_id] if people_id else [])
+        ids = [ch, dhw, flame] + ([people_id] if people_id else []) + list(settings.values())
         states = await self._async_history(ids, start, midnight)
         changes = {eid: [(st.last_changed, st.state == STATE_ON) for st in states.get(eid, [])] for eid in (ch, dhw, flame)}
         people = [(st.last_changed, _num(st.state)) for st in states.get(people_id, [])] if people_id else []
@@ -655,6 +676,9 @@ class ExperimentalRunner:
             split["date"] = date
             split["gas"] = round(gas, 3)
             split["away"] = self._away(people, date)
+            day_end = _day_start(date) + timedelta(days=1)
+            for key, eid in settings.items():
+                split[key] = _value_at(states.get(eid, []), day_end)
             await self._io(store.append_episode, self.f_gas_days, split)
 
     async def _async_gas_summary(self) -> dict[str, Any] | None:
@@ -710,8 +734,17 @@ class ExperimentalRunner:
         today = dt_util.now().date().isoformat()
         episodes = await self._io(store.read_episodes, self.f_episodes)
         todays = [e for e in episodes if e["start"][:10] == today]
-        rec = (await self._io(store.read_state, self.f_state)).get("recommendation")
+        tuner_state = await self._io(store.read_state, self.f_state)
+        rec = tuner_state.get("recommendation")
         p = self._params()
+        boiler = {"max_ch": self._float(CONF_EXP_MAX_CH), "dhw_setpoint": self._float(CONF_EXP_DHW_SETPOINT)}
+        boiler_line = tuner_core.boiler_change_line(tuner_state.get("boiler"), boiler)
+        if any(v is not None for v in boiler.values()):
+            # Keep the last known value of a setting that is unavailable right now
+            known = {**(tuner_state.get("boiler") or {}), **{k: v for k, v in boiler.items() if v is not None}}
+            if known != tuner_state.get("boiler"):
+                tuner_state["boiler"] = known
+                await self._io(store.write_state, self.f_state, tuner_state)
         lines = [tuner_core.summary_line(e) for e in todays] or ["- no complete warm-up episodes today"]
         # The prediction is made once a day at 21:00; a manual report shows the stored one.
         if predict:
@@ -728,6 +761,8 @@ class ExperimentalRunner:
         if all(v is not None for v in p.values()):
             message += f"\n\nCurrent: Kp {p['kp']}, Ki {p['ki']}, Kd {p['kd']}"
         message += f"\nWould change (observe mode, nothing applied): {self._rec_text(rec)}"
+        if boiler_line:
+            message += f"\n\n{boiler_line}"
         room = self.room
         message += f"\n\nNight, {room.name if room else 'no room'} (observe mode):\n" + "\n".join(night_lines)
         if gas:

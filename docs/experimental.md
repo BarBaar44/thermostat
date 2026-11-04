@@ -70,6 +70,8 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 | Hot water gas rate | ○ (leave empty: measured) | | |
 | Flow water temperature | | | ○ |
 | Return water temperature | | | ○ |
+| Boiler maximum flow temperature | ○ (stored per day) | | ○ (keeps warm-ups with a different limit apart) |
+| Boiler hot water setpoint | ○ (stored per day) | | |
 | PID Kp, Ki, Kd | | | ✔ for advice (all three) |
 | PID integral | | | ○ |
 | Gas price before / after 06:00 | | ○ | |
@@ -157,6 +159,13 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 - **Required:** no. They do not affect the advice.
 - **Where from:** the same sources as the flame sensors: OpenTherm Gateway, ESPHome OpenTherm, DIYLess.
 
+### Boiler maximum flow temperature, Boiler hot water setpoint
+
+- **What:** two sensors in °C with settings of the boiler itself: the highest flow temperature it allows for heating (OpenTherm *maximum CH water setpoint*, ID 57) and its hot water setpoint (ID 56). On many boilers both are set on the boiler's own panel. They are only read, never written.
+- **Why:** the maximum flow temperature caps what the PID can ask for. Lower it from 50 to 40 °C and warm-ups get slower with less overshoot, whatever the PID values are. Each warm-up stores the limit (`max_ch`), advice only combines warm-ups with the same limit, and the [progress check](#when-a-feature-becomes-stable) only compares warm-ups before and after a PID change that had the same limit. A warm-up during which the limit changed is skipped (`max_ch_changed`). Each gas day stores both settings in effect at the end of the day (`max_ch`, `dhw_setpoint` in `gas_days.jsonl`), so you can see what a lower hot water setpoint did to the hot-water gas. When either setting changes, the next evening report says so.
+- **Required:** no. Without them nothing changes; older records without `max_ch` are only compared with each other.
+- **Where from:** ESPHome OpenTherm (`max_t_set` and `t_dhw_set` sensors), DIYLess, or an OpenTherm Gateway. **Don't make the hot water setpoint writable from Home Assistant** just to see it: some boilers lock out when a thermostat writes it (an ATAG reported fault C1 51).
+
 ### PID Kp, PID Ki, PID Kd
 
 - **What:** the three tuning values of the PID controller in your boiler firmware that decides the flow temperature. Roughly: **Kp** reacts to how far the room is below target, **Ki** to how long it has been below, **Kd** to how fast the temperature changes.
@@ -206,22 +215,22 @@ At 21:00 it takes the hourly forecast and predicts the room temperature at your 
 
 **Question it answers:** is the boiler's PID loop tuned well for this house?
 
-Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, flow and return temperature, outdoor temperature and the gas meter. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops). From the start the episode follows that room's temperature and target, also after it reaches the target and no room wins any more.
+Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, flow and return temperature, the boiler's maximum flow temperature, outdoor temperature and the gas meter. The highest flow temperature of an episode (`water_peak`) leaves out minutes with hot water: a combi boiler runs much hotter for a tap than for the radiators. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops). From the start the episode follows that room's temperature and target, also after it reaches the target and no room wins any more.
 
 An episode in progress survives a restart, such as one to install an update: it's saved every 5 minutes and when Home Assistant stops, and the minutes it missed are filled with the last sample. After a gap of more than 15 minutes the episode is dropped.
 
 Each episode is judged on time to target (more than 60 minutes is slow), overshoot (more than 0.4 °C), the dip below target afterwards (more than 0.4 °C) and flame starts per hour (more than 6 is short-cycling).
 
 - **Only episodes led by the room to follow count for advice.** Others are recorded (reason `other_room`).
-- **Disturbed episodes are skipped:** winner or target changed, that room's window paused heating, more than 10 minutes of hot water, or shorter than 30 minutes.
-- **Advice needs agreement:** the last 2 valid episodes in the same outdoor band (below 0, 0 to 8, 8 to 15, above 15 °C) must point the same way. Then exactly one value moves by 10%: overshoot means lower Ki; swinging or short-cycling means lower Kp; slow without overshoot means raise Kp. Hard limits: Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000.
+- **Disturbed episodes are skipped:** winner or target changed, that room's window paused heating, more than 10 minutes of hot water, the boiler's maximum flow temperature changed, or shorter than 30 minutes.
+- **Advice needs agreement:** the last 2 valid episodes in the same outdoor band (below 0, 0 to 8, 8 to 15, above 15 °C) and with the same boiler maximum flow temperature must point the same way. Then exactly one value moves by 10%: overshoot means lower Ki; swinging or short-cycling means lower Kp; slow without overshoot means raise Kp. Hard limits: Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000.
 - **Advice only appears when Kp, Ki and Kd are all set.** Those limits fit an ESPHome PID climate driving an OpenTherm flow temperature; for another controller they may not make sense.
 
 **Why alpha:** no advice has been applied and checked yet. It says what it *would* do, nothing more.
 
 ## Evening report
 
-Every evening at 21:00 a persistent notification lists today's warm-up episodes, the current PID values and advice, the last night, tonight's prediction, gas per degree-day and the progress of each feature towards stable, with a link to this page. Call the service `cloudless_multiroom_thermostat.experimental_report` to get it on demand (it then shows the stored prediction instead of making a new one).
+Every evening at 21:00 a persistent notification lists today's warm-up episodes, the current PID values and advice, a line when the boiler's maximum flow temperature or hot water setpoint changed since the last report, the last night, tonight's prediction, gas per degree-day and the progress of each feature towards stable, with a link to this page. Call the service `cloudless_multiroom_thermostat.experimental_report` to get it on demand (it then shows the stored prediction instead of making a new one).
 
 The time is fixed at 21:00 because the night model measures the evening drop from 21:00.
 

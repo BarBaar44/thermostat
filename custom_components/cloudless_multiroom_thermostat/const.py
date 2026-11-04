@@ -74,6 +74,8 @@ CONF_EXP_CH_ACTIVE: Final = "exp_ch_active"
 CONF_EXP_DHW_RATE: Final = "exp_dhw_rate"  # m³ of gas per burner minute on hot water
 CONF_EXP_WATER: Final = "exp_water"
 CONF_EXP_RETURN: Final = "exp_return"
+CONF_EXP_MAX_CH: Final = "exp_max_ch"  # boiler maximum CH (flow) setpoint, read only
+CONF_EXP_DHW_SETPOINT: Final = "exp_dhw_setpoint"  # boiler hot water setpoint, read only
 CONF_EXP_PEOPLE: Final = "exp_people"
 CONF_EXP_KP: Final = "exp_kp"
 CONF_EXP_KI: Final = "exp_ki"
@@ -83,7 +85,7 @@ CONF_EXP_GAS_BEFORE6: Final = "exp_gas_price_before6"
 CONF_EXP_GAS_AFTER6: Final = "exp_gas_price_after6"
 EXP_ENTITY_KEYS: Final = (
     CONF_EXP_OUTDOOR, CONF_EXP_WEATHER, CONF_EXP_GAS, CONF_EXP_FLAME, CONF_EXP_DHW,
-    CONF_EXP_CH_ACTIVE, CONF_EXP_WATER, CONF_EXP_RETURN, CONF_EXP_PEOPLE, CONF_EXP_KP,
+    CONF_EXP_CH_ACTIVE, CONF_EXP_WATER, CONF_EXP_RETURN, CONF_EXP_MAX_CH, CONF_EXP_DHW_SETPOINT, CONF_EXP_PEOPLE, CONF_EXP_KP,
     CONF_EXP_KI, CONF_EXP_KD, CONF_EXP_INTEGRAL, CONF_EXP_GAS_BEFORE6, CONF_EXP_GAS_AFTER6,
 )
 DEFAULT_COMFORT_WEEKDAY: Final = "07:30:00"
