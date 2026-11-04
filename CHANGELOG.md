@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Fix:** the learning features only read the last 200 warm-up episodes and nights, although each file was read in full anyway. With several rooms that is a month or two of warm-ups, so the progress check lost the episodes before a PID change long before it could judge it. The whole history is read now (a year is a few thousand lines, parsed in tens of milliseconds, and only when an episode ends and at 21:00).
+- **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
 
