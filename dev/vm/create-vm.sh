@@ -15,7 +15,7 @@ set -euo pipefail
 
 NAME="cmt-test"
 BRANCH=""
-REPO="https://github.com/BarBaar44/thermostat"
+REPO="https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat"
 MEMORY=2048
 VCPUS=2
 DISK_GB=16

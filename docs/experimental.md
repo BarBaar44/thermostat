@@ -46,7 +46,7 @@ Maturity means:
 - **Beta**: the numbers are useful; details may still change.
 - **Stable**: not used yet; nothing here is stable. See [When a feature becomes stable](#when-a-feature-becomes-stable).
 
-The analysis has run in one house (an Atag boiler on OpenTherm with an ESPHome PID) since October 2026; the maturity above describes that analysis. If something looks wrong, please [open an issue](https://github.com/BarBaar44/thermostat/issues).
+The analysis has run in one house (an Atag boiler on OpenTherm with an ESPHome PID) since October 2026; the maturity above describes that analysis. If something looks wrong, please [open an issue](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat/issues).
 
 ## The entities on the settings page
 
@@ -245,7 +245,7 @@ Switching the features off stops all sampling; the files and your entity choices
 
 ### Coming from the pyscript tuner
 
-The integration reads the same five files as the pyscript tuner ([`pyscript/` in v1.1.0](https://github.com/BarBaar44/thermostat/tree/v1.1.0/pyscript)), so its history carries over:
+The integration reads the same five files as the pyscript tuner ([`pyscript/` in v1.1.0](https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat/tree/v1.1.0/pyscript)), so its history carries over:
 
 1. Stop the tuner (remove it from pyscript's `apps:` or disable pyscript) and **restart Home Assistant**. The tuner's sensors, such as `sensor.heating_gas_per_degree_day`, stay in the state machine until a restart. If one is still there when you enable the features, the integration's sensor gets `_2` instead of that entity ID.
 2. Copy `episodes.jsonl`, `nights.jsonl`, `gas_days.jsonl`, `state.json` and `night_state.json` from the tuner's `data_dir` (default `config/heating_tuner`) into `config/cloudless_multiroom_thermostat/<entry id>/`.
