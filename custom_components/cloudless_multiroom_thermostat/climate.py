@@ -93,11 +93,17 @@ class RoomClimate(ClimateEntity, RestoreEntity):
         last = await self.async_get_last_state()
         if last is not None:
             room.hvac_on = last.state == HVACMode.HEAT
-            target = last.attributes.get(ATTR_TEMPERATURE)
-            if target is not None:
-                room.target = float(target)
             preset = last.attributes.get(ATTR_PRESET)
             room.preset = preset if preset in (PRESET_ECO, PRESET_WARM) else None
+            target = last.attributes.get(ATTR_TEMPERATURE)
+            # A preset takes its temperature from the room settings, which an
+            # edit may have changed; a manual target stays within min and max
+            if room.preset == PRESET_ECO:
+                room.target = room.eco_temp
+            elif room.preset == PRESET_WARM:
+                room.target = room.warm_temp
+            elif target is not None:
+                room.target = min(max(float(target), self.min_temp), self.max_temp)
             room.manual_pause = bool(last.attributes.get(ATTR_MANUAL_PAUSE, False))
         else:
             room.target = room.warm_temp
