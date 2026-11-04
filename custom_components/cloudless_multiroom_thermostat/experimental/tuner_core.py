@@ -81,6 +81,12 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
     # ~55 degC the condensing boiler recovers extra heat, the lower the better
     returns = [s.get("ret") for s in samples
                if s["flame"] and not s["dhw"] and s.get("ret") is not None]
+    # Flow water for heating only: during a hot-water draw a combi boiler runs
+    # its water much hotter (60+ degC), which says nothing about the warm-up
+    waters = [s["water"] for s in samples if not s["dhw"] and s["water"] is not None]
+    # The boiler's own flow limit (maximum CH setpoint): it caps what the PID
+    # can ask for, so warm-ups with a different limit are not comparable
+    caps = [s.get("max_ch") for s in samples if s.get("max_ch") is not None]
 
     if len(samples) < MIN_EPISODE_MIN:
         reasons.append("too_short")
@@ -98,6 +104,8 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
         reasons.append("hot_water")
     if reach_idx is None:
         reasons.append("target_not_reached")
+    if len(set(caps)) > 1:
+        reasons.append("max_ch_changed")
 
     return {
         "schema": SCHEMA,
@@ -118,7 +126,8 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
         "flame_starts": flame_starts,
         "flame_starts_per_hour": round(flame_starts / hours, 1),
         "flame_on_min": len([1 for s in samples if s["flame"]]),
-        "water_peak": max([s["water"] for s in samples if s["water"] is not None], default=None),
+        "water_peak": max(waters, default=None),
+        "max_ch": caps[0] if caps else None,
         "gas_used": round(gas[-1] - gas[0], 3) if gas else None,
         "return_avg": round(sum(returns) / len(returns), 1) if returns else None,
         "return_max": max(returns) if returns else None,
@@ -161,7 +170,7 @@ ACTIONS = {
 def recommend(episodes, params):
     """
     Look at the most recent valid episodes of the latest valid episode's group
-    (room class + outdoor band). Recommend one change only when the last
+    (room class + outdoor band + boiler flow limit). Recommend one change only when the last
     CONSISTENT_EPISODES of them agree. Returns None or a dict.
     """
     valid = [e for e in episodes if e["valid"]]
@@ -173,6 +182,7 @@ def recommend(episodes, params):
         if e["valid"]
         and e["room_class"] == last["room_class"]
         and e["outdoor_band"] == last["outdoor_band"]
+        and e.get("max_ch") == last.get("max_ch")
     ][-CONSISTENT_EPISODES:]
     if len(group) < CONSISTENT_EPISODES:
         return None
@@ -197,7 +207,7 @@ def summary_line(e):
     start = e["start"][11:16]
     if not e["valid"]:
         return "- {} {}: skipped ({})".format(start, e["area"], ", ".join(e["invalid_reasons"]))
-    return (
+    line = (
         "- {} {} -> {:.1f} degC (outside {} degC): target after {} min, "
         "overshoot {:+.1f}, dip {:.1f}, {} flame starts, water max {}, return avg {}".format(
             start, e["area"], e["target"], e["outdoor_avg"], e["rise_min"],
@@ -205,3 +215,25 @@ def summary_line(e):
             e.get("return_avg", "-"),
         )
     )
+    if e.get("max_ch") is not None:
+        line += ", flow limit {:g}".format(e["max_ch"])
+    return line
+
+
+BOILER_SETTINGS = (("max_ch", "max flow"), ("dhw_setpoint", "hot water"))
+
+
+def boiler_change_line(before, now):
+    """A report line when a boiler setting changed since the last report, else None.
+
+    before and now map "max_ch" / "dhw_setpoint" to a value or None. A setting
+    without a value on either side (not configured, unavailable, first report)
+    is not reported as a change.
+    """
+    before = before or {}
+    parts = [
+        "{} {:g} -> {:g} degC".format(label, before[key], now[key])
+        for key, label in BOILER_SETTINGS
+        if before.get(key) is not None and now.get(key) is not None and before[key] != now[key]
+    ]
+    return "Boiler settings changed since the last report: " + ", ".join(parts) if parts else None

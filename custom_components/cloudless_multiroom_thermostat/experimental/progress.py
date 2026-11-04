@@ -83,6 +83,12 @@ def pid_changes(episodes):
     """
     PID values changed by hand between valid episodes of the followed room.
     Returns per outdoor band the last change: the episodes before it and after it.
+
+    Before and after only hold episodes with the boiler flow limit (max_ch) of
+    the first episode after the change: a lower limit alone slows a warm-up
+    and cuts its overshoot, which would otherwise be credited to the PID.
+    Records without max_ch (older ones, or the field not set) only compare
+    with each other.
     """
     followed = [
         e for e in episodes
@@ -95,8 +101,9 @@ def pid_changes(episodes):
             continue
         band = followed[i]["outdoor_band"]
         params = followed[i]["params"]
-        same = [e for e in followed if e["outdoor_band"] == band]
-        before = [e for e in followed[:i] if e["outdoor_band"] == band][-PID_COMPARE_BEFORE:]
+        cap = followed[i].get("max_ch")
+        same = [e for e in followed if e["outdoor_band"] == band and e.get("max_ch") == cap]
+        before = [e for e in followed[:i] if e["outdoor_band"] == band and e.get("max_ch") == cap][-PID_COMPARE_BEFORE:]
         after = [e for e in same if e["start"] >= followed[i]["start"] and e["params"] == params]
         by_band[band] = {"before": before, "after": after}
     return by_band

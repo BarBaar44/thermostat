@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Boiler settings in the learning features:** two new optional fields on the learning features page, **Boiler maximum flow temperature** (OpenTherm maximum CH setpoint) and **Boiler hot water setpoint**. Both are only read. Each warm-up episode stores the flow limit (`max_ch`); PID advice and the progress check only compare warm-ups with the same limit, so lowering the limit on the boiler is not credited to (or blamed on) the PID values. A warm-up during which the limit changed is skipped (`max_ch_changed`). Each gas day stores both settings (`max_ch`, `dhw_setpoint`). The evening report gets a line when either changed since the last report. Details: [docs/experimental.md](docs/experimental.md#boiler-maximum-flow-temperature-boiler-hot-water-setpoint).
+- **Fix:** a warm-up's highest flow temperature (`water_peak`, "water max" in the report) included hot-water draws, when a combi boiler runs at 60 °C or more. It now leaves out minutes with hot water active.
+
 ## 1.3.1
 
 - **Fix:** with no room calling for heat and the heating room exactly at its target, the heat source's current temperature (and `sensor.<system>_winning_room_temperature`) was not taken from that room. It kept the previous winner's value, which could be another room's stale temperature, or stayed unknown right after a restart until the room moved 0.1 °C. A room at target now fills it, as an overshooting room already did.

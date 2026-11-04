@@ -73,3 +73,17 @@ def test_pid_progress_change_not_better() -> None:
 def test_report_lines() -> None:
     lines = progress.report_lines(None, [], [])
     assert len(lines) == 3 and all(line.startswith("- ") for line in lines)
+
+
+def test_pid_progress_compares_same_flow_limit() -> None:
+    """A lower boiler flow limit alone cuts overshoot; it must not be credited to the PID change."""
+    before = [{**_ep(1, P1, 0.6), "max_ch": 47.5}, {**_ep(2, P1, 0.5), "max_ch": 47.5}]
+    after = [{**_ep(3 + i, P2, 0.2), "max_ch": 40.0} for i in range(5)]
+    change = progress.pid_changes(before + after)["0_8"]
+    assert change["before"] == [] and len(change["after"]) == 5
+    text = progress.pid_progress(before + after)["text"]
+    assert "0 of 2 outdoor bands confirmed" in text and "0_8 5/5)" in text
+
+    # Same limit on both sides: compared as before
+    before = [{**e, "max_ch": 40.0} for e in before]
+    assert "0_8 5/5 better" in progress.pid_progress(before + after)["text"]

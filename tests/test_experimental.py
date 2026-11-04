@@ -527,3 +527,155 @@ def test_warmup_rate_matches_room_id_and_legacy_name() -> None:
     ]
     rate, n, _ = night_core.warmup_rate(episodes, room_id="a", room_name="Living Room")
     assert n == 3 and rate == pytest.approx(0.05)
+
+
+def test_episode_water_peak_skips_hot_water_and_stores_flow_limit() -> None:
+    samples = _samples()
+    for s in samples:
+        s["max_ch"] = 40.0
+    samples[5].update(dhw=True, water=64.0)  # a short hot-water draw
+    e = tuner_core.analyse(samples, {}, "cooled_down", room_id="a", followed_room_id="a")
+    assert e["valid"]
+    assert e["water_peak"] == 50.0 and e["max_ch"] == 40.0
+    assert tuner_core.summary_line(e).endswith(", flow limit 40")
+
+    samples[20]["max_ch"] = 47.5  # limit changed on the boiler during the warm-up
+    e = tuner_core.analyse(samples, {}, "cooled_down", room_id="a", followed_room_id="a")
+    assert "max_ch_changed" in e["invalid_reasons"] and e["max_ch"] == 40.0
+
+    # Without the field nothing changes
+    e = tuner_core.analyse(_samples(), {}, "cooled_down", room_id="a", followed_room_id="a")
+    assert e["max_ch"] is None and e["valid"]
+    assert "flow limit" not in tuner_core.summary_line(e)
+
+
+def _judged(max_ch: float | None) -> dict:
+    return {
+        "valid": True, "room_class": "living", "outdoor_band": "0_8", "overshoot": 0.8,
+        "flame_starts_per_hour": 1.0, "undershoot": 0.0, "rise_min": 30, "max_ch": max_ch,
+    }
+
+
+def test_recommend_keeps_flow_limits_apart() -> None:
+    params = {"kp": 0.7, "ki": 0.003, "kd": 0.0}
+    assert tuner_core.recommend([_judged(47.5), _judged(40.0)], params) is None
+    rec = tuner_core.recommend([_judged(47.5), _judged(40.0), _judged(40.0)], params)
+    assert rec["verdict"] == "overshoot" and rec["param"] == "ki"
+    # Older records without the field still group with each other
+    assert tuner_core.recommend([_judged(None), _judged(None)], params)["param"] == "ki"
+
+
+def test_boiler_change_line() -> None:
+    now = {"max_ch": 40.0, "dhw_setpoint": 50.0}
+    assert tuner_core.boiler_change_line(None, now) is None  # first report: nothing to compare
+    assert tuner_core.boiler_change_line(now, now) is None
+    assert tuner_core.boiler_change_line({"max_ch": 47.5, "dhw_setpoint": 65.0}, now) == (
+        "Boiler settings changed since the last report: max flow 47.5 -> 40 degC, hot water 65 -> 50 degC"
+    )
+    assert tuner_core.boiler_change_line({"max_ch": 47.5, "dhw_setpoint": 50.0}, now) == (
+        "Boiler settings changed since the last report: max flow 47.5 -> 40 degC"
+    )
+    # Unavailable right now is not a change
+    assert tuner_core.boiler_change_line(now, {"max_ch": None, "dhw_setpoint": 50.0}) is None
+
+
+BOILER = {"exp_max_ch": "sensor.max_ch", "exp_dhw_setpoint": "sensor.dhw_set"}
+
+
+async def test_gas_split_stores_boiler_settings(hass: HomeAssistant) -> None:
+    """Each split day keeps the boiler settings in effect at its end."""
+    entry = await _setup(hass, {**EXP, **BOILER})
+    runner = entry.runtime_data.experimental
+    now = dt_util.now()
+    day0 = dt_util.start_of_local_day(now) - timedelta(days=1)
+    stats = {
+        "sensor.gas": [
+            {"start": (day0 + timedelta(hours=h)).timestamp(), "change": 0.2 if 6 <= h < 9 else 0.0}
+            for h in range(24)
+        ]
+    }
+
+    class St:
+        def __init__(self, when, state):
+            self.last_changed = when
+            self.state = state
+
+    history = {
+        "binary_sensor.ch_active": [St(day0, "off"), St(day0 + timedelta(hours=6), "on"), St(day0 + timedelta(hours=9), "off")],
+        "binary_sensor.dhw": [St(day0, "off")],
+        "binary_sensor.flame": [St(day0, "off"), St(day0 + timedelta(hours=6), "on"), St(day0 + timedelta(hours=9), "off")],
+        "zone.home": [St(day0, "2")],
+        # changed on the boiler at 13:00; the setpoint sensor dropped out in the evening
+        "sensor.max_ch": [St(day0, "47.5"), St(day0 + timedelta(hours=13), "40")],
+        "sensor.dhw_set": [St(day0, "65"), St(day0 + timedelta(hours=20), "unavailable")],
+    }
+    asked = []
+
+    async def fake_stats(ids, start, end, period, types):
+        return stats
+
+    async def fake_history(ids, start, end):
+        asked.extend(ids)
+        return history
+
+    with patch.object(runner, "_async_statistics", side_effect=fake_stats), patch.object(
+        runner, "_async_history", side_effect=fake_history
+    ):
+        await runner._async_store_gas_splits(now)
+
+    assert "sensor.max_ch" in asked and "sensor.dhw_set" in asked
+    day = (await runner._async_read_gas_days())[day0.date().isoformat()]
+    assert day["max_ch"] == 40.0 and day["dhw_setpoint"] == 65.0
+
+
+async def test_gas_split_without_boiler_settings(hass: HomeAssistant) -> None:
+    """Not configured: no boiler fields in the record (the gas split test covers the rest)."""
+    entry = await _setup(hass, EXP)
+    runner = entry.runtime_data.experimental
+    now = dt_util.now()
+    day0 = dt_util.start_of_local_day(now) - timedelta(days=1)
+
+    class St:
+        def __init__(self, when, state):
+            self.last_changed = when
+            self.state = state
+
+    async def fake_stats(ids, start, end, period, types):
+        return {"sensor.gas": [{"start": (day0 + timedelta(hours=h)).timestamp(), "change": 0.0} for h in range(24)]}
+
+    async def fake_history(ids, start, end):
+        return {eid: [St(day0, "off")] for eid in ids}
+
+    with patch.object(runner, "_async_statistics", side_effect=fake_stats), patch.object(
+        runner, "_async_history", side_effect=fake_history
+    ):
+        await runner._async_store_gas_splits(now)
+    day = (await runner._async_read_gas_days())[day0.date().isoformat()]
+    assert "max_ch" not in day and "dhw_setpoint" not in day
+
+
+async def test_report_shows_boiler_setting_change(hass: HomeAssistant) -> None:
+    await _setup(hass, {**EXP, **BOILER, "exp_gas": None})
+    hass.states.async_set("sensor.max_ch", "47.5")
+    hass.states.async_set("sensor.dhw_set", "65")
+    created = []
+
+    async def report():
+        await hass.services.async_call(DOMAIN, "experimental_report", {}, blocking=True)
+
+    with patch.object(
+        runner_mod.persistent_notification, "async_create", side_effect=lambda h, m, **kw: created.append(m)
+    ):
+        await report()  # first report: only remembers the values
+        hass.states.async_set("sensor.max_ch", "40")
+        hass.states.async_set("sensor.dhw_set", "unavailable")
+        await report()
+        hass.states.async_set("sensor.dhw_set", "50")
+        await report()
+        await report()  # nothing changed
+
+    assert "Boiler settings changed" not in created[0]
+    assert "Boiler settings changed since the last report: max flow 47.5 -> 40 degC" in created[1]
+    assert "hot water 65" not in created[1]  # unavailable is not a change
+    assert "Boiler settings changed since the last report: hot water 65 -> 50 degC" in created[2]
+    assert "Boiler settings changed" not in created[3]
