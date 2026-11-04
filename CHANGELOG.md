@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **ESPHome fail safe (`thermostat.yaml`):** after 5 minutes without a Home Assistant connection the PID's room temperature is set to unknown, so the PID stops heating. Before, the 1 second heartbeat kept repeating the last value and the PID kept heating towards the last target until the API's reboot timeout (15 min by default, never when set to 0s). It resumes as soon as Home Assistant connects again. Reflash the thermostat to use it.
+- **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
 
