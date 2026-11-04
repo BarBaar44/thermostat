@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.
 - **Night prediction retries a missing forecast:** if the weather forecast is unavailable at 21:00, it is tried again at 22:00 and 23:00. When a retry works, the prediction is made and the evening report is replaced, so one forecast outage no longer loses the whole night's prediction.
