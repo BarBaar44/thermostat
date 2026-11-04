@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** changing **Room to follow** mixed the old room's history into the new one's. PID advice and the progress check grouped warm-ups by a marker stamped when each was recorded, and nights stored no room at all. They now use the room followed now, matched by id (by name for older records): the old room's warm-ups and nights no longer count, and the new room's warm-ups recorded as `other_room` count again. New nights store their `room_id`; a night in progress when the room changes is dropped.
+
 ## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.

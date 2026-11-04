@@ -287,6 +287,7 @@ async def test_night_recorded(hass: HomeAssistant, freezer: FrozenDateTimeFactor
     assert runner._night is None
     nights = [json.loads(line) for line in open(runner.f_nights, encoding="utf-8")]
     assert len(nights) == 1 and nights[0]["end_reason"] == "heating_on"
+    assert nights[0]["room_id"] == _living_id(entry)
 
 
 async def test_night_starts_while_a_non_driving_room_heats(
@@ -806,3 +807,32 @@ async def test_report_shows_boiler_setting_change(hass: HomeAssistant) -> None:
     assert "hot water 65" not in created[1]  # unavailable is not a change
     assert "Boiler settings changed since the last report: hot water 65 -> 50 degC" in created[2]
     assert "Boiler settings changed" not in created[3]
+
+
+def _led_by(room_id: str, followed_then: str) -> dict:
+    other = room_id != followed_then
+    return {
+        **_judged(None), "room_id": room_id, "area": room_id.title(),
+        "room_class": "other" if other else "living",
+        "valid": not other, "invalid_reasons": ["other_room"] if other else [],
+    }
+
+
+def test_recommend_follows_the_room_followed_now() -> None:
+    params = {"kp": 0.7, "ki": 0.003, "kd": 0.0}
+    # Two overshooting warm-ups of "b", recorded while "a" was followed
+    history = [_led_by("b", "a"), _led_by("b", "a"), _led_by("a", "a")]
+    assert tuner_core.recommend(history, params, room_id="b", room_name="B")["param"] == "ki"
+    # "a" has one episode of its own: no advice, and b's don't count for it
+    assert tuner_core.recommend(history, params, room_id="a", room_name="A") is None
+    # Other invalid reasons still count
+    spoiled = [{**e, "invalid_reasons": ["other_room", "hot_water"]} for e in history[:2]]
+    assert tuner_core.recommend(spoiled, params, room_id="b", room_name="B") is None
+    # Old records without room_id match by name
+    old = [{k: v for k, v in e.items() if k != "room_id"} for e in history[:2]]
+    assert tuner_core.recommend(old, params, room_id="b", room_name="b")["param"] == "ki"
+
+
+def test_for_room_keeps_nights_without_a_room() -> None:
+    nights = [{"room_id": "a"}, {"room_id": "b"}, {}]
+    assert night_core.for_room(nights, "a") == [{"room_id": "a"}, {}]
