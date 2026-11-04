@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Fix:** a TRV that was switched off (on the device, or by another automation) stayed off for good: the integration only wrote setpoints, which an off TRV ignores, and kept rewriting them. A TRV that reports off and supports heat is now set back to heat. The integration holds rooms off with the off temperature, never with the TRV's off mode, so this doesn't change how rooms switch off.
+- **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
 
