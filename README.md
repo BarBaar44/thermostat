@@ -1,4 +1,6 @@
-# 🌡️ Cloudless Multiroom Thermostat
+<p align="center"><img src="https://raw.githubusercontent.com/BarBaar44/thermostat/main/custom_components/cloudless_multiroom_thermostat/brand/icon@2x.png" alt="Cloudless Multiroom Thermostat logo" width="160"></p>
+
+# Cloudless Multiroom Thermostat
 
 A Home Assistant integration for multi-room central heating without a cloud. Any number of rooms, each with its own temperature sensor and radiator valves, share one heat source: the room that needs heat most drives the boiler, and every other room heats along through its own valves. Everything is set up from the UI and runs locally.
 
