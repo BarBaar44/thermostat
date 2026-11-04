@@ -134,9 +134,11 @@ See [Boiler specific notes](#boiler-specific-notes) before adding writes for you
 
 Issues found with one boiler brand or model. They are not caused by the integration, but by what an OpenTherm thermostat sends to that boiler.
 
-### Atag: never write the hot water setpoint (lockout C1 51)
+### Atag E325EC: never write the hot water setpoint (lockout C1 51)
 
-> **Do not let the thermostat write the hot water setpoint, OpenTherm ID 56.** On the Atag E325EC this was found on, it locks the boiler out with **C1 51** (no heating and no hot water) until the writes stop. Reading ID 56 is fine. Set the hot water temperature on the boiler's own panel.
+Found on an **Atag E325EC** combi boiler (2015) over OpenTherm. Other Atag models may behave the same, but that has not been tested.
+
+> **Do not let the thermostat write the hot water setpoint, OpenTherm ID 56.** On the Atag E325EC it locks the boiler out with **C1 51** (no heating and no hot water) until the writes stop. Reading ID 56 is fine. Set the hot water temperature on the boiler's own panel.
 
 **What it looks like:** the display shows **C1 51**, which Atag fault lists describe as a fan fault. In Home Assistant "Fault indication" turns on, the flame stays off on every demand, and a reset clears it for only a few seconds. The fan itself is fine: with the thermostat disconnected the boiler works normally.
 
