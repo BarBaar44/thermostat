@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Docs:** the README and the heat source field now say which temperature the heat source regulates on. The Climate and OTGW heat sources only receive the winning room's target; multi-room control needs a thermostat that also regulates on the **Winning room temperature** sensor, as the ESPHome PID in `thermostat.yaml` does. A thermostat on its own built-in sensor, or an OTGW, follows the temperature where it hangs. See [Which temperature the heat source regulates on](README.md#process-value).
+- **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
 
