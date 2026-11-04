@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -17,6 +19,8 @@ from .const import (
     SERVICE_SET_ALL_OFF,
 )
 from .controller import HeatingController
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.SENSOR, Platform.BINARY_SENSOR]
 
@@ -82,9 +86,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: CMTConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await controller.async_start()
     if controller.experimental is not None:
-        await controller.experimental.async_start()
+        await _async_start_learning(controller)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
+
+
+async def _async_start_learning(controller: HeatingController) -> None:
+    """Start the learning features; a failure there must never stop the heating."""
+    runner = controller.experimental
+    try:
+        await runner.async_start()
+    except Exception:  # noqa: BLE001 - observe only: log it and heat on without them
+        _LOGGER.exception("Learning features failed to start; the heating runs without them")
+        try:
+            await runner.async_stop()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Stopping the learning features after a failed start failed too", exc_info=True)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: CMTConfigEntry) -> bool:

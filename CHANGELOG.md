@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Fix:** after a restart, or any reload (changing options or a room reloads the integration), the learning sensors were unknown until the next warm-up episode, and the night prediction until 21:00, although their values were stored. **PID advice**, **Last warm-up overshoot** and **Night prediction** now show their stored values again as soon as the integration starts.
+- **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
 
