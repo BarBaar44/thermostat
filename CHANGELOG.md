@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Fix:** the learning features only read the last 200 warm-up episodes and nights, although each file was read in full anyway. With several rooms that is a month or two of warm-ups, so the progress check lost the episodes before a PID change long before it could judge it. The whole history is read now (a year is a few thousand lines, parsed in tens of milliseconds, and only when an episode ends and at 21:00).
+- **Fix:** a TRV that was switched off (on the device, or by another automation) stayed off for good: the integration only wrote setpoints, which an off TRV ignores, and kept rewriting them. A TRV that reports off and supports heat is now set back to heat. The integration holds rooms off with the off temperature, never with the TRV's off mode, so this doesn't change how rooms switch off.
 - **Fix:** changing a room's eco or warm temperature in Edit room did nothing while that preset was active: the room kept the old temperature until the preset was selected again. A room on a preset now takes its temperature from the room settings after an edit or a restart, and a manual target is kept within a changed minimum and maximum.
 - **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
