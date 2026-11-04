@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Fix:** after a restart, or any reload (changing options or a room reloads the integration), the learning sensors were unknown until the next warm-up episode, and the night prediction until 21:00, although their values were stored. **PID advice**, **Last warm-up overshoot** and **Night prediction** now show their stored values again as soon as the integration starts.
+- **Fix:** changing a room's eco or warm temperature in Edit room did nothing while that preset was active: the room kept the old temperature until the preset was selected again. A room on a preset now takes its temperature from the room settings after an edit or a restart, and a manual target is kept within a changed minimum and maximum.
 - **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
