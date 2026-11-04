@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Fix:** PID advice could point the wrong way for a value outside its known range (Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000). Moving the value into the range came first, so an overshoot with Ki 0.0002 advised *raising* Ki to 0.0005, and a slow warm-up with Kp 12 advised Kp 1.5. Such a value now gets no advice; the report says it is outside the range the advice knows, which usually means another PID scale.
+- **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
 
