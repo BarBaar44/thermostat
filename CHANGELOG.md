@@ -4,6 +4,7 @@
 
 - **Docs:** the PID integral field says what to do with a firmware that doesn't report the integral times 100 like ESPHome.
 - Cleanup: an unused comfort time table and a duplicate hot-water rate constant removed, module docstrings and comments that still described the pyscript version or the Delta Temperature template brought up to date. No behaviour change.
+- **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 
 ## 1.4.1
 
