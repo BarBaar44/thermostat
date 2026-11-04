@@ -780,7 +780,9 @@ class ExperimentalRunner:
     async def async_report(self, predict: bool = False, repost: bool = False) -> None:
         """Post today's episodes, the night and gas as a persistent notification.
 
-        repost replaces tonight's report and keeps its boiler line.
+        repost replaces tonight's report and keeps its boiler line. Only the
+        21:00 report (predict) stores the boiler settings, so a manual report
+        doesn't take the change line away from the evening report.
         """
         today = dt_util.now().date().isoformat()
         episodes = await self._io(store.read_episodes, self.f_episodes)
@@ -790,8 +792,9 @@ class ExperimentalRunner:
         p = self._params()
         boiler = {"max_ch": self._float(CONF_EXP_MAX_CH), "dhw_setpoint": self._float(CONF_EXP_DHW_SETPOINT)}
         boiler_line = self._boiler_line if repost else tuner_core.boiler_change_line(tuner_state.get("boiler"), boiler)
-        self._boiler_line = boiler_line
-        if any(v is not None for v in boiler.values()):
+        if predict:
+            self._boiler_line = boiler_line
+        if predict and any(v is not None for v in boiler.values()):
             # Keep the last known value of a setting that is unavailable right now
             known = {**(tuner_state.get("boiler") or {}), **{k: v for k, v in boiler.items() if v is not None}}
             if known != tuner_state.get("boiler"):
