@@ -806,3 +806,19 @@ async def test_report_shows_boiler_setting_change(hass: HomeAssistant) -> None:
     assert "hot water 65" not in created[1]  # unavailable is not a change
     assert "Boiler settings changed since the last report: hot water 65 -> 50 degC" in created[2]
     assert "Boiler settings changed" not in created[3]
+
+
+def test_recommend_never_moves_against_the_verdict() -> None:
+    overshoot = [_judged(None), _judged(None)]
+    # Ki below the known range: clamping would have raised it on overshoot
+    rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.0002, "kd": 0.0})
+    assert rec["outside_range"] and rec["new"] == rec["old"] == 0.0002
+    slow = [{**e, "overshoot": 0.1, "rise_min": 90} for e in overshoot]
+    # Kp on another scale: clamping would have cut it to 1.5 on a slow warm-up
+    rec = tuner_core.recommend(slow, {"kp": 12.0, "ki": 0.003, "kd": 0.0})
+    assert rec["param"] == "kp" and rec["outside_range"] and rec["new"] == 12.0
+    # Inside the range the 10% step and the limits are unchanged
+    rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.003, "kd": 0.0})
+    assert rec["new"] == 0.0027 and not rec["at_limit"] and "outside_range" not in rec
+    rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.0005, "kd": 0.0})
+    assert rec["at_limit"] and rec["new"] == 0.0005

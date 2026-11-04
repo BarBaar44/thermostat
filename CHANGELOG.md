@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fix:** PID advice could point the wrong way for a value outside its known range (Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000). Moving the value into the range came first, so an overshoot with Ki 0.0002 advised *raising* Ki to 0.0005, and a slow warm-up with Kp 12 advised Kp 1.5. Such a value now gets no advice; the report says it is outside the range the advice knows, which usually means another PID scale.
+
 ## 1.4.1
 
 - **Fix:** a report on demand (`experimental_report`) took the "Boiler settings changed" line away from the evening report: it stored the new settings, so at 21:00 nothing had changed any more. Only the 21:00 report stores them now.
