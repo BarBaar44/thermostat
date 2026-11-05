@@ -215,7 +215,7 @@ At 21:00 it takes the hourly forecast and predicts the room temperature at your 
 
 **Question it answers:** is the boiler's PID loop tuned well for this house?
 
-Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, flow and return temperature, the boiler's maximum flow temperature, outdoor temperature and the gas meter. The highest flow temperature of an episode (`water_peak`) leaves out minutes with hot water: a combi boiler runs much hotter for a tap than for the radiators. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops). From the start the episode follows that room's temperature and target, also after it reaches the target and no room wins any more.
+Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, flow and return temperature, the boiler's maximum flow temperature, outdoor temperature and the gas meter. The highest flow temperature of an episode (`water_peak`) leaves out minutes with hot water: a combi boiler runs much hotter for a tap than for the radiators. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 30 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops). From the start the episode follows that room's temperature and target, also after it reaches the target and no room wins any more.
 
 An episode in progress survives a restart, such as one to install an update: it's saved every 5 minutes and when Home Assistant stops, and the minutes it missed are filled with the last sample. After a gap of more than 15 minutes the episode is dropped.
 
@@ -223,7 +223,7 @@ Each episode is judged on time to target (more than 60 minutes is slow), oversho
 
 - **Only episodes led by the room to follow count for advice.** Others are recorded (reason `other_room`).
 - **Disturbed episodes are skipped:** winner or target changed, that room's window paused heating, more than 10 minutes of hot water, the boiler's maximum flow temperature changed, or shorter than 30 minutes.
-- **Advice needs agreement:** the last 2 valid episodes in the same outdoor band (below 0, 0 to 8, 8 to 15, above 15 °C) and with the same boiler maximum flow temperature must point the same way. Then exactly one value moves by 10%: overshoot means lower Ki; swinging or short-cycling means lower Kp; slow without overshoot means raise Kp. Hard limits: Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000.
+- **Advice needs agreement:** the last 2 valid episodes in the same outdoor band (below 0, 0 to 8, 8 to 15, above 15 °C) and with the same boiler maximum flow temperature must point the same way. Episodes from before 30 minutes became the observation time (it was 90) don't count here, or in the before and after comparison of a PID change: they measured overshoot for longer. Then exactly one value moves by 10%: overshoot means lower Ki; swinging or short-cycling means lower Kp; slow without overshoot means raise Kp. Hard limits: Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000.
 - **Advice only appears when Kp, Ki and Kd are all set.** Those limits fit an ESPHome PID climate driving an OpenTherm flow temperature; for another controller they may not make sense.
 
 **Why alpha:** no advice has been applied and checked yet. It says what it *would* do, nothing more.

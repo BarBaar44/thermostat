@@ -88,7 +88,8 @@ def pid_changes(episodes):
     the first episode after the change: a lower limit alone slows a warm-up
     and cuts its overshoot, which would otherwise be credited to the PID.
     Records without max_ch (older ones, or the field not set) only compare
-    with each other.
+    with each other. The same goes for the schema: a shorter observation after
+    reaching target measures less overshoot, whatever the PID values are.
     """
     followed = [
         e for e in episodes
@@ -102,8 +103,12 @@ def pid_changes(episodes):
         band = followed[i]["outdoor_band"]
         params = followed[i]["params"]
         cap = followed[i].get("max_ch")
-        same = [e for e in followed if e["outdoor_band"] == band and e.get("max_ch") == cap]
-        before = [e for e in followed[:i] if e["outdoor_band"] == band and e.get("max_ch") == cap][-PID_COMPARE_BEFORE:]
+        schema = tuner_core.schema_of(followed[i])
+        same = [
+            e for e in followed
+            if e["outdoor_band"] == band and e.get("max_ch") == cap and tuner_core.schema_of(e) == schema
+        ]
+        before = [e for e in same if e["start"] < followed[i]["start"]][-PID_COMPARE_BEFORE:]
         after = [e for e in same if e["start"] >= followed[i]["start"] and e["params"] == params]
         by_band[band] = {"before": before, "after": after}
     return by_band

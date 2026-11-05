@@ -10,9 +10,14 @@ works towards a target, from the moment demand appears until POST_REACH_MIN
 minutes after the room first reaches the target.
 """
 
-SCHEMA = 1
+# Schema 2: observed for 30 minutes after reaching target instead of 90, so its
+# overshoot and dip can come out lower. Records of different schemas are not
+# compared with each other; older records don't always carry the field.
+SCHEMA = 2
 
-POST_REACH_MIN = 90        # observe this long after the room first reaches target
+# Observe this long after the room first reaches target. Later on, a reheat, the
+# sun or people in the room move the temperature more than the warm-up does.
+POST_REACH_MIN = 30
 MAX_RISE_MIN = 240         # give up on reaching target after this long
 MIN_EPISODE_MIN = 30       # shorter episodes are not judged
 DHW_MAX_MIN = 10           # more hot-water time than this disturbs the episode
@@ -42,6 +47,10 @@ def outdoor_band(temp):
         if temp < upper:
             return name
     return "above_15"
+
+
+def schema_of(episode):
+    return episode.get("schema", 1)
 
 
 def room_class(room_id, followed_room_id):
@@ -170,7 +179,7 @@ ACTIONS = {
 def recommend(episodes, params):
     """
     Look at the most recent valid episodes of the latest valid episode's group
-    (room class + outdoor band + boiler flow limit). Recommend one change only when the last
+    (room class + outdoor band + boiler flow limit + schema). Recommend one change only when the last
     CONSISTENT_EPISODES of them agree. Returns None or a dict.
     """
     valid = [e for e in episodes if e["valid"]]
@@ -183,6 +192,7 @@ def recommend(episodes, params):
         and e["room_class"] == last["room_class"]
         and e["outdoor_band"] == last["outdoor_band"]
         and e.get("max_ch") == last.get("max_ch")
+        and schema_of(e) == schema_of(last)
     ][-CONSISTENT_EPISODES:]
     if len(group) < CONSISTENT_EPISODES:
         return None

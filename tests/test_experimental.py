@@ -193,7 +193,7 @@ async def test_warm_up_episode_recorded(hass: HomeAssistant) -> None:
             temp += 0.03  # reaches 19.0 after about 34 minutes
         await _minute(hass, runner, temp, flame=minute % 20 < 15)
     assert entry.runtime_data.winner.name == "Off", "the winner turns Off once the room reaches target"
-    assert runner._episode is None, "episode should finish 90 minutes after reaching target"
+    assert runner._episode is None, "episode should finish 30 minutes after reaching target"
 
     records = [json.loads(line) for line in open(runner.f_episodes, encoding="utf-8")]
     assert len(records) == 1
@@ -868,3 +868,16 @@ async def test_learning_start_failure_keeps_heating(hass: HomeAssistant) -> None
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=3))
     await hass.async_block_till_done()
     assert hass.states.get("sensor.heating_winning_room").state == "Living"
+
+
+def test_recommend_keeps_schemas_apart() -> None:
+    def ep(schema):
+        return {
+            "valid": True, "room_class": "living", "outdoor_band": "0_8", "max_ch": 40.0,
+            "overshoot": 0.8, "flame_starts_per_hour": 1, "undershoot": 0.0, "rise_min": 15, "schema": schema,
+        }
+
+    params = {"kp": 1.0, "ki": 0.005, "kd": 100.0}
+    assert tuner_core.recommend([ep(1), ep(2)], params) is None, "one episode of the new schema is not enough"
+    assert tuner_core.recommend([ep(1), ep(1)], params)["param"] == "ki", "older records agree among themselves"
+    assert tuner_core.recommend([ep(1), ep(2), ep(2)], params)["param"] == "ki"

@@ -87,3 +87,15 @@ def test_pid_progress_compares_same_flow_limit() -> None:
     # Same limit on both sides: compared as before
     before = [{**e, "max_ch": 40.0} for e in before]
     assert "0_8 5/5 better" in progress.pid_progress(before + after)["text"]
+
+
+def test_pid_progress_compares_same_schema() -> None:
+    before = [{**_ep(1, P1, 0.6), "schema": 1}, {**_ep(2, P1, 0.5), "schema": 1}]
+    after = [{**_ep(3 + i, P2, 0.2), "schema": 2} for i in range(5)]
+    change = progress.pid_changes(before + after)["0_8"]
+    assert change["before"] == [] and len(change["after"]) == 5, "older records have no say"
+
+    before = [{**e, "schema": 2} for e in before]
+    change = progress.pid_changes(before + after)["0_8"]
+    assert len(change["before"]) == 2 and len(change["after"]) == 5
+
