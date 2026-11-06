@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Docs:** the README explains installing from the Marketplace, which replaces HACS from Home Assistant 2026.11. The HACS steps stay for 2026.10.
+
 ## 1.5.0
 
 - **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
