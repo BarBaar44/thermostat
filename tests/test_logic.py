@@ -70,3 +70,10 @@ def test_trv_target_buffer_step_and_clamp():
     assert trv_target(20.3, False, 0, 0.5, 5, 30) == 20.5
     assert trv_target(29.5, True, 1.0, 0.5, 5, 30) == 30
     assert round_to_step(19.26, None) == 19.3
+
+
+def test_switch_rounds_the_gap_like_the_winner():
+    # 0.01 below target rounds to 0.0: nobody calls for heat, so the relay stops
+    rooms = [room("a", target=18, current=17.99)]
+    assert select_winner(rooms, 10, None).room_id is None
+    assert switch_should_run(rooms, currently_on=True, hysteresis=0.3) is False

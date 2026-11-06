@@ -232,6 +232,11 @@ def recommend(episodes, params, *, room_id=None, room_name=None):
     return {**rec, "new": new}
 
 
+def _or_dash(value):
+    """A value for a report line, "-" when it is missing (sensor not set or no data)."""
+    return "-" if value is None else value
+
+
 def summary_line(e):
     """One human-readable line for the daily notification."""
     start = e["start"][11:16]
@@ -240,9 +245,9 @@ def summary_line(e):
     line = (
         "- {} {} -> {:.1f} degC (outside {} degC): target after {} min, "
         "overshoot {:+.1f}, dip {:.1f}, {} flame starts, water max {}, return avg {}".format(
-            start, e["area"], e["target"], e["outdoor_avg"], e["rise_min"],
-            e["overshoot"], e["undershoot"], e["flame_starts"], e["water_peak"],
-            e.get("return_avg", "-"),
+            start, e["area"], e["target"], _or_dash(e["outdoor_avg"]), e["rise_min"],
+            e["overshoot"], e["undershoot"], e["flame_starts"], _or_dash(e.get("water_peak")),
+            _or_dash(e.get("return_avg")),
         )
     )
     if e.get("max_ch") is not None:
