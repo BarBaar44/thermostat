@@ -99,3 +99,50 @@ def test_pid_progress_compares_same_schema() -> None:
     change = progress.pid_changes(before + after)["0_8"]
     assert len(change["before"]) == 2 and len(change["after"]) == 5
 
+def _room_ep(day: int, params: dict, overshoot: float, room_id: str, followed_then: str) -> dict:
+    """An episode as recorded while followed_then was the room to follow."""
+    other = room_id != followed_then
+    return {
+        **_ep(day, params, overshoot, room_class="other" if other else "living"),
+        "room_id": room_id, "area": room_id.title(),
+        "valid": not other, "invalid_reasons": ["other_room"] if other else [],
+    }
+
+
+def test_pid_progress_follows_the_room_followed_now() -> None:
+    # Recorded while "a" was followed; then the room to follow became "b"
+    episodes = [_room_ep(d, P1, 0.6, "b", "a") for d in range(1, 6)]
+    episodes += [_room_ep(d, P2, 0.3, "b", "a") for d in range(6, 11)]
+    episodes += [_room_ep(d, P1, 0.6, "a", "a") for d in range(11, 13)]
+    by_b = progress.pid_changes(episodes, "b", "B")
+    assert len(by_b["0_8"]["before"]) == 5 and len(by_b["0_8"]["after"]) == 5
+    assert "0_8 5/5 better" in progress.pid_progress(episodes, "b", "B")["text"]
+    # Room "a" now only has its own episodes, all with the same values
+    assert progress.pid_changes(episodes, "a", "A") == {}
+
+
+def test_report_lines_count_nights_of_the_followed_room() -> None:
+    nights = [{**_night(d, 0.1, 5.0), "room_id": "b"} for d in range(1, 4)] + [_night(4, 0.1, 5.0)]
+    lines = progress.report_lines(None, nights, [], "a", "A")
+    assert "Night model: 1 of 30" in lines[1]
+
+
+def test_one_change_counts_in_every_band() -> None:
+    """One set of PID values for all weather: a change is judged in each band it ran in."""
+    episodes = [_ep(d, P1, 0.6, band="0_8") for d in range(1, 6)]
+    episodes += [_ep(d, P1, 0.7, band="below_0") for d in range(6, 11)]
+    # One change by hand, then warm-ups in both bands
+    episodes += [_ep(d, P2, 0.3, band="0_8" if d % 2 else "below_0") for d in range(11, 21)]
+    changes = progress.pid_changes(episodes)
+    assert sorted(changes) == ["0_8", "below_0"]
+    assert all(len(c["before"]) == 5 and len(c["after"]) == 5 for c in changes.values())
+    p = progress.pid_progress(episodes)
+    assert p["done"] and "2 of 2 outdoor bands confirmed" in p["text"]
+
+
+def test_a_later_change_replaces_the_earlier_one_per_band() -> None:
+    p3 = {**P2, "kp": 0.5}
+    episodes = [_ep(1, P1, 0.6), _ep(2, P2, 0.3), _ep(3, p3, 0.2), _ep(4, p3, 0.2)]
+    change = progress.pid_changes(episodes)["0_8"]
+    assert [e["params"] for e in change["after"]] == [p3, p3]
+    assert [e["params"] for e in change["before"]] == [P1, P2]

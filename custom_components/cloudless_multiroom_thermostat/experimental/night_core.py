@@ -1,8 +1,8 @@
 """
-heating_night_core - night cooldown model for the heating tuner
-----------------------------------------------------------------
-Plain Python with no pyscript or Home Assistant dependencies, like
-heating_tuner_core. Observe only: nothing here controls the heating.
+night_core - night cooldown model
+---------------------------------
+Plain Python with no Home Assistant imports, like tuner_core. Observe only:
+nothing here controls the heating.
 
 A night runs from the moment central heating is switched off in the evening
 until it is switched on again in the morning. It is sampled every 10 minutes.
@@ -43,10 +43,8 @@ K_NIGHTS = 7               # median k over this many recent valid nights
 MIN_NIGHTS = 2             # predictions start after this many valid nights
 MIN_WARMUPS = 2            # warm-up estimate needs this many morning episodes
 
-# Mirrors the Heating Schedule automation: when the living room should be at
-# MORNING_TARGET. Weekday 0 = Monday.
-COMFORT_TIME = {0: "07:30", 1: "07:30", 2: "07:30", 3: "07:30", 4: "07:30",
-                5: "08:00", 6: "08:00"}
+# Morning target of predictions stored before they recorded their own (the
+# runner passes the followed room's warm temperature)
 MORNING_TARGET = 18.0
 
 
@@ -66,14 +64,23 @@ def _quiet(sample, start_iso):
         return False
     if sample["sun_up"] or sample["garden_open"]:
         return False
-    # The night starts in the evening; "after QUIET_FROM_HOUR" means the
-    # next calendar day, before NIGHT_MAX_END_HOUR.
     return _quiet_hours(sample, start_iso)
 
 
+def _morning_date(start_iso):
+    """Local date of the morning a night runs into: the next day for a night
+    that starts in the evening, its own day for one that starts after midnight."""
+    start = datetime.fromisoformat(start_iso)
+    day = start.date() + timedelta(days=1) if start.hour >= 12 else start.date()
+    return day.isoformat()
+
+
 def _quiet_hours(sample, start_iso):
-    """Sample lies in the quiet hours (next day, QUIET_FROM_HOUR..NIGHT_MAX_END_HOUR)."""
-    return sample["t"][:10] != start_iso[:10] and QUIET_FROM_HOUR <= _hour(sample["t"]) < NIGHT_MAX_END_HOUR
+    """Sample lies in the quiet hours: the night's morning, QUIET_FROM_HOUR..NIGHT_MAX_END_HOUR."""
+    return (
+        sample["t"][:10] == _morning_date(start_iso)
+        and QUIET_FROM_HOUR <= _hour(sample["t"]) < NIGHT_MAX_END_HOUR
+    )
 
 
 def fit_k(samples, start_iso):
@@ -106,13 +113,24 @@ def _minutes(iso):
 
 
 def _room_at_hour(samples, start_iso, hour):
-    """Room temperature of the first sample at or after hour (evening hours on
-    the start day, early hours on the next day)."""
-    next_day = hour < 12
+    """Room temperature of the first sample at or after hour: evening hours on
+    the start day, early hours on the night's morning."""
+    date = _morning_date(start_iso) if hour < 12 else start_iso[:10]
     for s in samples:
-        if (s["t"][:10] != start_iso[:10]) == next_day and _hour(s["t"]) >= hour and s["room"] is not None:
+        if s["t"][:10] == date and _hour(s["t"]) >= hour and s["room"] is not None:
             return s["room"]
     return None
+
+
+def _evening_room(samples, start_iso):
+    """Room temperature at EVENING_FROM_HOUR, or None when the heating was
+    still on then. The 21:00 prediction applies the evening drop from 21:00,
+    so a night that starts later (or after midnight) can't measure it."""
+    start = datetime.fromisoformat(start_iso)
+    evening = start.replace(hour=EVENING_FROM_HOUR, minute=0, second=0, microsecond=0)
+    if start.hour < 12 or start > evening + timedelta(minutes=SAMPLE_MIN):
+        return None
+    return _room_at_hour(samples, start_iso, EVENING_FROM_HOUR)
 
 
 def analyse(samples, end_reason, prediction=None, gas_start=None, gas_end=None):
@@ -120,7 +138,7 @@ def analyse(samples, end_reason, prediction=None, gas_start=None, gas_end=None):
     first, last = samples[0], samples[-1]
     reasons = []
     k, n_quiet, mean_delta = fit_k(samples, first["t"])
-    room_evening = _room_at_hour(samples, first["t"], EVENING_FROM_HOUR)
+    room_evening = _evening_room(samples, first["t"])
     room_quiet = _room_at_hour(samples, first["t"], QUIET_FROM_HOUR)
 
     rooms = [s["room"] for s in samples if s["room"] is not None]
@@ -128,10 +146,12 @@ def analyse(samples, end_reason, prediction=None, gas_start=None, gas_end=None):
     peak = max(rooms) if rooms else None
     hold_min = None
     if peak is not None:
-        # pyscript has no generator expressions: list comprehensions only
-        peak_i = [i for i, s in enumerate(samples) if s["room"] == peak][0]
-        drop_i = ([i for i, s in enumerate(samples) if i >= peak_i
-                   and s["room"] is not None and s["room"] <= peak - HOLD_DROP] or [None])[0]
+        peak_i = next(i for i, s in enumerate(samples) if s["room"] == peak)
+        drop_i = next(
+            (i for i, s in enumerate(samples)
+             if i >= peak_i and s["room"] is not None and s["room"] <= peak - HOLD_DROP),
+            None,
+        )
         if drop_i is not None:
             hold_min = int(round(_minutes(samples[drop_i]["t"]) - _minutes(first["t"])))
 
@@ -193,13 +213,18 @@ def _median(values):
 
 def model(nights):
     """
-    Median k and evening drop over the last K_NIGHTS valid nights.
-    Returns (k, evening_drop, n); k is None while learning.
+    Median k over the last K_NIGHTS valid nights, and median evening drop
+    over the last K_NIGHTS valid nights that measured one (heating off by
+    21:00). Returns (k, evening_drop, n), n being the smaller of the two
+    counts; k is None while either has fewer than MIN_NIGHTS.
     """
-    used = [n for n in nights if n["valid"] and n["k"] and n.get("evening_drop") is not None][-K_NIGHTS:]
-    if len(used) < MIN_NIGHTS:
-        return None, None, len(used)
-    return _median([n["k"] for n in used]), _median([n["evening_drop"] for n in used]), len(used)
+    valid = [n for n in nights if n["valid"]]
+    ks = [n["k"] for n in valid if n["k"]][-K_NIGHTS:]
+    drops = [n["evening_drop"] for n in valid if n.get("evening_drop") is not None][-K_NIGHTS:]
+    used = min(len(ks), len(drops))
+    if used < MIN_NIGHTS:
+        return None, None, used
+    return _median(ks), _median(drops), used
 
 
 def simulate(room_now, now_iso, forecast, k, until_iso):
@@ -268,18 +293,16 @@ def warmup_rate(episodes, outdoor=None, *, room_id, room_name):
     return _median(rates), len(rates), None
 
 
-def _is_room(episode, room_id, room_name):
-    """Newer records carry room_id, which survives a rename. Older ones
-    (and the copied pyscript history) only have the room name."""
-    if episode.get("room_id") is not None:
-        return episode["room_id"] == room_id
-    return (episode.get("area") or "").casefold() == (room_name or "").casefold()
+def for_room(nights, room_id):
+    """Nights of the room followed now. Nights recorded before nights stored
+    their room have no room_id and are kept: one room was followed then too."""
+    return [n for n in nights if n.get("room_id") in (None, room_id)]
 
 
 def _warmup_rates(episodes, room_id, room_name):
     rates = []
     for e in episodes:
-        if not _is_room(e, room_id, room_name) or not e.get("rise_min"):
+        if not tuner_core.is_room(e, room_id, room_name) or not e.get("rise_min"):
             continue
         if "garden_doors" in e.get("invalid_reasons", []) or e.get("start_temp") is None:
             continue
@@ -343,12 +366,17 @@ def predict(room_now, now_iso, forecast, nights, episodes, comfort_at, gas_befor
     return out
 
 
+def _temp(value):
+    """One decimal, "-" when missing (was shown as 0.0)."""
+    return "-" if value is None else f"{value:.1f}"
+
+
 def night_line(n):
     """One human-readable line about last night for the daily notification."""
     start = n["start"][11:16]
     end = n["end"][11:16]
-    base = "- Night {}-{}: {:.1f} -> {:.1f} degC (outside avg {}, people home in the evening {}), evening hold {} min, evening drop {}".format(
-        start, end, n["room_start"] or 0, n["room_end"] or 0, n["outdoor_avg"],
+    base = "- Night {}-{}: {} -> {} degC (outside avg {}, people home in the evening {}), evening hold {} min, evening drop {}".format(
+        start, end, _temp(n["room_start"]), _temp(n["room_end"]), "-" if n["outdoor_avg"] is None else n["outdoor_avg"],
         n["people_evening"] if n.get("people_evening") is not None else "-",
         n["hold_min"] if n["hold_min"] is not None else "-",
         "{:+.1f}".format(n["evening_drop"]) if n.get("evening_drop") is not None else "-")

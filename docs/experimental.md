@@ -24,10 +24,10 @@ Most of what keeps a feature from stable is not waiting for data but proof: does
 |---|---|---|
 | Gas per degree-day | A full year of data (so a whole heating season), and with the boiler signals set, a measured (or set) hot-water rate | Serve as the official check for the other features |
 | Night cooldown model | At least 30 predicted nights spread over 3 or more outdoor bands, average error 0.3 °C or less, no night off by more than 0.6 °C | Optimum start: begin heating at the predicted time |
-| Warm-up episodes and PID advice | PID values changed by hand in at least 2 outdoor bands, each followed by 5 or more valid episodes of the followed room with less overshoot or a faster warm-up on average than the 5 before, and gas per degree-day not worse | Set the PID values per outdoor band (gain scheduling) |
+| Warm-up episodes and PID advice | PID values changed by hand, confirmed in at least 2 outdoor bands: in each band, 5 or more valid episodes of the followed room after the change with less overshoot or a faster warm-up on average than the 5 before it in that band, and gas per degree-day not worse | Set the PID values per outdoor band (gain scheduling) |
 | Evening report | The features it reports on are stable | Stay as it is |
 
-The night model counts its last 30 valid nights that had a prediction. A change by hand is noticed when the Kp, Ki or Kd of an episode differ from the episode before; the band is the one the first episode after the change ran in. Whether gas per degree-day got worse is left to you: one change does not move it enough to tell automatically.
+The night model counts its last 30 valid nights that had a prediction. A change by hand is noticed when the Kp, Ki or Kd of an episode differ from the episode before. There is one set of PID values for all weather, so a change is judged in every band it runs in: per band, its episodes on the new values against the 5 before the change in that band. One change can confirm both bands once the weather has varied; a later change replaces it. Whether gas per degree-day got worse is left to you: one change does not move it enough to tell automatically.
 
 The [evening report](#evening-report) shows where each feature stands against these numbers. They are a starting point and may be adjusted as more data comes in.
 
@@ -87,6 +87,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 - **Required:** yes, the form always has a value.
 - **Where from:** your own rooms in this integration.
 - **Renaming:** the room is matched by its id, not its name, so renaming it keeps its warm-up history. Each episode in `episodes.jsonl` stores the id of the room that led it (`room_id`). Older records without it, such as copied pyscript history, are matched by room name.
+- **Changing it:** advice, the warm-up estimate, the night model and the progress check always use the room you follow now. Each night in `nights.jsonl` stores its room (`room_id`); older nights without one count for whichever room you follow. A warm-up recorded as `other_room` while another room was followed counts once you follow its room. A night in progress when you change the room is dropped.
 
 ### Comfort time on weekdays / at weekends
 
@@ -178,7 +179,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 - **What:** a sensor with the PID's integral term: the part of its output built up from how long the room has been below target.
 - **Why:** recorded with each warm-up (lowest and highest value) to help explain an overshoot: an integral that keeps building up is a classic cause.
 - **Required:** no. It does not affect the advice.
-- **Where from:** ESPHome's PID climate can publish it as a sensor (`type: INTEGRAL`). ESPHome reports it as a percentage (times 100); the integration divides it by 100.
+- **Where from:** ESPHome's PID climate can publish it as a sensor (`type: INTEGRAL`). ESPHome reports it as a percentage (times 100); the integration divides it by 100. A sensor from other firmware that reports the plain value would come out 100 times too small: leave the field empty, or feed it a template sensor that multiplies by 100.
 
 ### Gas price tomorrow before 06:00 / after 06:00
 
@@ -204,8 +205,8 @@ Raw gas use per day mostly follows the weather, so it can't show that. The featu
 
 When the heating goes off in the evening (no room that drives the heat source heating any more, between 18:00 and 02:00; a room with **Drives the heat source** off, such as a hallway on eco, doesn't count), a **night** starts. Every 10 minutes it samples the room you chose under **Room to follow**, the outdoor temperature, wind, that room's windows, the sun and how many people are home, until the heating comes back on (or 11:00). Nights shorter than 4 hours are ignored.
 
-- **The quiet part of the night** (from 01:00 until sunrise or until heating starts, windows closed) follows Newton's law of cooling, `dT/dt = -k * (T_room - T_outdoor)`, with time constant tau = 1/k.
-- **The evening does not follow that law.** People, cooking and appliances keep a living room warm for a few hours after the heating stops, then it drops around bedtime. That part is learned as a plain number: the evening drop from 21:00 to 01:00.
+- **The quiet part of the night** (from 01:00 until sunrise or until heating starts, windows closed, on the morning the night runs into: the next day, or the same day for a night that starts after midnight) follows Newton's law of cooling, `dT/dt = -k * (T_room - T_outdoor)`, with time constant tau = 1/k.
+- **The evening does not follow that law.** People, cooking and appliances keep a living room warm for a few hours after the heating stops, then it drops around bedtime. That part is learned as a plain number: the evening drop from 21:00 to 01:00. Only nights during which the heating was already off at 21:00 can measure it (the prediction applies it from 21:00); a night that starts later still teaches the cooling rate.
 
 At 21:00 it takes the hourly forecast and predicts the room temperature at your **comfort time** (weekday and weekend times are settings). From the warm-up speed of earlier morning warm-ups in a similar outdoor temperature, it says when heating would have to start to reach the room's **warm** temperature by then. The next morning the prediction is compared with what really happened.
 
@@ -215,15 +216,15 @@ At 21:00 it takes the hourly forecast and predicts the room temperature at your 
 
 **Question it answers:** is the boiler's PID loop tuned well for this house?
 
-Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, flow and return temperature, the boiler's maximum flow temperature, outdoor temperature and the gas meter. The highest flow temperature of an episode (`water_peak`) leaves out minutes with hot water: a combi boiler runs much hotter for a tap than for the radiators. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 30 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops). From the start the episode follows that room's temperature and target, also after it reaches the target and no room wins any more.
+Once a minute it samples the heat source target, the winning room's temperature, flame, hot water, flow and return temperature, the boiler's maximum flow temperature, outdoor temperature and the gas meter. The highest flow temperature of an episode (`water_peak`) leaves out minutes with hot water: a combi boiler runs much hotter for a tap than for the radiators. An **episode** starts when the winning room drops more than 0.1 °C below target, and ends 90 minutes after the room first reaches the target (or after 4 hours without reaching it, or when heating stops). From the start the episode follows that room's temperature and target, also after it reaches the target and no room wins any more.
 
 An episode in progress survives a restart, such as one to install an update: it's saved every 5 minutes and when Home Assistant stops, and the minutes it missed are filled with the last sample. After a gap of more than 15 minutes the episode is dropped.
 
 Each episode is judged on time to target (more than 60 minutes is slow), overshoot (more than 0.4 °C), the dip below target afterwards (more than 0.4 °C) and flame starts per hour (more than 6 is short-cycling).
 
-- **Only episodes led by the room to follow count for advice.** Others are recorded (reason `other_room`).
+- **Only episodes led by the room to follow count for advice.** Others are recorded (reason `other_room`), and count again if you follow their room later.
 - **Disturbed episodes are skipped:** winner or target changed, that room's window paused heating, more than 10 minutes of hot water, the boiler's maximum flow temperature changed, or shorter than 30 minutes.
-- **Advice needs agreement:** the last 2 valid episodes in the same outdoor band (below 0, 0 to 8, 8 to 15, above 15 °C) and with the same boiler maximum flow temperature must point the same way. Episodes from before 30 minutes became the observation time (it was 90) don't count here, or in the before and after comparison of a PID change: they measured overshoot for longer. Then exactly one value moves by 10%: overshoot means lower Ki; swinging or short-cycling means lower Kp; slow without overshoot means raise Kp. Hard limits: Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000.
+- **Advice needs agreement:** the last 2 valid episodes in the same outdoor band (below 0, 0 to 8, 8 to 15, above 15 °C) and with the same boiler maximum flow temperature must point the same way. Then exactly one value moves by 10%: overshoot means lower Ki; swinging or short-cycling means lower Kp; slow without overshoot means raise Kp. Hard limits: Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000. A value outside its range gets no advice ("outside the range the advice knows"): moving it into the range could go against the verdict, and it usually means another PID scale.
 - **Advice only appears when Kp, Ki and Kd are all set.** Those limits fit an ESPHome PID climate driving an OpenTherm flow temperature; for another controller they may not make sense.
 
 **Why alpha:** no advice has been applied and checked yet. It says what it *would* do, nothing more.

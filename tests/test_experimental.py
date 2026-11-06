@@ -289,6 +289,7 @@ async def test_night_recorded(hass: HomeAssistant, freezer: FrozenDateTimeFactor
     assert runner._night is None
     nights = [json.loads(line) for line in open(runner.f_nights, encoding="utf-8")]
     assert len(nights) == 1 and nights[0]["end_reason"] == "heating_on"
+    assert nights[0]["room_id"] == _living_id(entry)
 
 
 async def test_night_starts_while_a_non_driving_room_heats(
@@ -810,6 +811,128 @@ async def test_report_shows_boiler_setting_change(hass: HomeAssistant) -> None:
     assert "Boiler settings changed" not in created[3]
 
 
+async def test_gas_window_starts_at_midnight_and_warns_once(hass: HomeAssistant, caplog) -> None:
+    entry = await _setup(hass, EXP)
+    runner = entry.runtime_data.experimental
+    now = dt_util.now()
+    day0 = dt_util.start_of_local_day(now) - timedelta(days=1)
+    starts = []
+
+    async def fake_stats(ids, start, end, period, types):
+        starts.append((period, start))
+        if period == "hour":  # gas used, but no burner history at all
+            return {"sensor.gas": [{"start": (day0 + timedelta(hours=h)).timestamp(), "change": 0.1} for h in range(24)]}
+        return {}
+
+    async def fake_history(ids, start, end):
+        return {}
+
+    with patch.object(runner, "_async_statistics", side_effect=fake_stats), patch.object(
+        runner, "_async_history", side_effect=fake_history
+    ):
+        await runner._async_gas_summary()
+        await runner._async_gas_summary()
+    day_start = next(start for period, start in starts if period == "day")
+    assert day_start == dt_util.start_of_local_day(now - timedelta(days=365))
+    warnings = [r for r in caplog.records if "No burner history" in r.message and r.levelname == "WARNING"]
+    assert len(warnings) == 1
+
+
+def test_report_lines_show_a_dash_for_missing_values() -> None:
+    e = tuner_core.analyse(_samples(), {}, "cooled_down", room_id="a", followed_room_id="a")
+    e = {**e, "outdoor_avg": None, "water_peak": None, "return_avg": None}
+    line = tuner_core.summary_line(e)
+    assert "None" not in line and "outside - degC" in line and "return avg -" in line
+    night = {
+        "start": "2026-11-04T20:00:00+01:00", "end": "2026-11-05T06:30:00+01:00", "room_start": None,
+        "room_end": 18.25, "outdoor_avg": None, "people_evening": None, "hold_min": None,
+        "evening_drop": None, "valid": False, "invalid_reasons": ["too_short"], "prediction_error": None,
+    }
+    assert night_core.night_line(night).startswith("- Night 20:00-06:30: - -> 18.2 degC (outside avg -,")
+def test_read_episodes_reads_the_whole_history(tmp_path) -> None:
+    from custom_components.cloudless_multiroom_thermostat.experimental import store
+
+    path = str(tmp_path / "episodes.jsonl")
+    for i in range(450):  # more than a year of nights, more than the old cap of 200
+        store.append_episode(path, {"n": i})
+    assert [e["n"] for e in store.read_episodes(path)] == list(range(450))
+    assert [e["n"] for e in store.read_episodes(path, 3)] == [447, 448, 449]
+def _led_by(room_id: str, followed_then: str) -> dict:
+    other = room_id != followed_then
+    return {
+        **_judged(None), "room_id": room_id, "area": room_id.title(),
+        "room_class": "other" if other else "living",
+        "valid": not other, "invalid_reasons": ["other_room"] if other else [],
+    }
+
+
+def test_recommend_follows_the_room_followed_now() -> None:
+    params = {"kp": 0.7, "ki": 0.003, "kd": 0.0}
+    # Two overshooting warm-ups of "b", recorded while "a" was followed
+    history = [_led_by("b", "a"), _led_by("b", "a"), _led_by("a", "a")]
+    assert tuner_core.recommend(history, params, room_id="b", room_name="B")["param"] == "ki"
+    # "a" has one episode of its own: no advice, and b's don't count for it
+    assert tuner_core.recommend(history, params, room_id="a", room_name="A") is None
+    # Other invalid reasons still count
+    spoiled = [{**e, "invalid_reasons": ["other_room", "hot_water"]} for e in history[:2]]
+    assert tuner_core.recommend(spoiled, params, room_id="b", room_name="B") is None
+    # Old records without room_id match by name
+    old = [{k: v for k, v in e.items() if k != "room_id"} for e in history[:2]]
+    assert tuner_core.recommend(old, params, room_id="b", room_name="b")["param"] == "ki"
+
+
+def test_for_room_keeps_nights_without_a_room() -> None:
+    nights = [{"room_id": "a"}, {"room_id": "b"}, {}]
+    assert night_core.for_room(nights, "a") == [{"room_id": "a"}, {}]
+def _night_samples(start: str, hours: float, room0: float = 20.0) -> list[dict]:
+    """10-minute night samples from start, cooling 0.05 degC per sample, 5 degC outside."""
+    t0 = dt_util.parse_datetime(start)
+    return [
+        {
+            "t": (t0 + timedelta(minutes=10 * i)).isoformat(timespec="seconds"),
+            "room": round(room0 - 0.05 * i, 2), "outdoor": 5.0, "wind": None,
+            "garden_open": False, "sun_up": False, "people": 2.0,
+        }
+        for i in range(int(hours * 6) + 1)
+    ]
+
+
+def test_night_after_midnight_can_be_valid() -> None:
+    # Heating off at 00:30, back on at 06:30: the quiet part is the same day
+    record = night_core.analyse(_night_samples("2026-11-05T00:30:00+01:00", 6), "heating_on")
+    assert record["valid"], record["invalid_reasons"]
+    assert record["quiet_samples"] >= night_core.MIN_QUIET_SAMPLES
+    assert record["evening_drop"] is None  # the heating was on at 21:00
+
+
+def test_evening_drop_only_when_off_by_21() -> None:
+    early = night_core.analyse(_night_samples("2026-11-04T20:00:00+01:00", 10), "heating_on")
+    # 21:00 is sample 6 (19.70), 01:00 sample 30 (18.50)
+    assert early["evening_drop"] == -1.2
+    late = night_core.analyse(_night_samples("2026-11-04T21:54:00+01:00", 9), "heating_on")
+    assert late["valid"] and late["evening_drop"] is None
+
+
+def test_model_learns_k_from_nights_without_an_evening_drop() -> None:
+    night = {"valid": True, "k": 0.02, "evening_drop": None}
+    assert night_core.model([night, night]) == (None, None, 0)
+    with_drop = {"valid": True, "k": 0.03, "evening_drop": -1.0}
+    k, drop, n = night_core.model([night, night, with_drop, with_drop])
+    assert k == 0.025 and drop == -1.0 and n == 2
+def test_recommend_never_moves_against_the_verdict() -> None:
+    overshoot = [_judged(None), _judged(None)]
+    # Ki below the known range: clamping would have raised it on overshoot
+    rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.0002, "kd": 0.0})
+    assert rec["outside_range"] and rec["new"] == rec["old"] == 0.0002
+    slow = [{**e, "overshoot": 0.1, "rise_min": 90} for e in overshoot]
+    # Kp on another scale: clamping would have cut it to 1.5 on a slow warm-up
+    rec = tuner_core.recommend(slow, {"kp": 12.0, "ki": 0.003, "kd": 0.0})
+    assert rec["param"] == "kp" and rec["outside_range"] and rec["new"] == 12.0
+    # Inside the range the 10% step and the limits are unchanged
+    rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.003, "kd": 0.0})
+    assert rec["new"] == 0.0027 and not rec["at_limit"] and "outside_range" not in rec
+    rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.0005, "kd": 0.0})
+    assert rec["at_limit"] and rec["new"] == 0.0005
 async def test_stored_values_shown_after_reload(hass: HomeAssistant) -> None:
     from custom_components.cloudless_multiroom_thermostat.experimental import store
 

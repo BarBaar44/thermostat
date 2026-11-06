@@ -64,8 +64,10 @@ def switch_should_run(
     rooms: list[RoomDemand], currently_on: bool, hysteresis: float
 ) -> bool:
     """On/off heat source: start at hysteresis below target, stop at target."""
+    # Rounded like select_winner and the room role, so a room 0.01 below
+    # target doesn't keep a relay boiler running that nobody calls for
     deltas = [
-        r.target - r.current
+        round(r.target - r.current, 1)
         for r in rooms
         if r.heating and r.drives and r.target is not None and r.current is not None
     ]

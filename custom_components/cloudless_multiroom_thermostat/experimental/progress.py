@@ -7,7 +7,7 @@ stable") and returns lines for the evening report. Keep the numbers
 here and in the docs in step.
 """
 
-from . import tuner_core
+from . import gas_core, night_core, tuner_core
 
 # Gas per degree-day
 GAS_DAYS = 365             # a full year of data holds a whole heating season
@@ -37,7 +37,9 @@ def gas_progress(summary):
         rate_ok = True
     elif rate["source"] == "default":
         rate_ok = False
-        text += "; hot-water rate still the default ({} of 60 minutes measured)".format(rate["minutes"])
+        text += "; hot-water rate still the default ({} of {} minutes measured)".format(
+            rate["minutes"], gas_core.RATE_MIN_MINUTES
+        )
     else:
         rate_ok = True
         text += "; hot-water rate {}".format(rate["source"])
@@ -79,43 +81,50 @@ def _better(before, after):
     return False
 
 
-def pid_changes(episodes):
+def pid_changes(episodes, room_id=None, room_name=None):
     """
-    PID values changed by hand between valid episodes of the followed room.
+    PID values changed by hand between valid episodes of the followed room
+    (judged against the room followed now: tuner_core.judged_valid).
     Returns per outdoor band the last change: the episodes before it and after it.
 
+    There is one set of PID values for all weather, so a change counts in
+    every band with an episode on the new values after it, not only in the
+    band of the first episode after it.
+
     Before and after only hold episodes with the boiler flow limit (max_ch) of
-    the first episode after the change: a lower limit alone slows a warm-up
-    and cuts its overshoot, which would otherwise be credited to the PID.
-    Records without max_ch (older ones, or the field not set) only compare
-    with each other. The same goes for the schema: a shorter observation after
-    reaching target measures less overshoot, whatever the PID values are.
+    the band's first episode after the change: a lower limit alone slows a
+    warm-up and cuts its overshoot, which would otherwise be credited to the
+    PID. Records without max_ch (older ones, or the field not set) only
+    compare with each other.
     """
     followed = [
         e for e in episodes
-        if e.get("valid") and e.get("room_class") == "living"
+        if tuner_core.judged_valid(e, room_id, room_name)
         and e.get("params") and None not in e["params"].values()
     ]
     by_band = {}
     for i in range(1, len(followed)):
         if followed[i]["params"] == followed[i - 1]["params"]:
             continue
-        band = followed[i]["outdoor_band"]
         params = followed[i]["params"]
-        cap = followed[i].get("max_ch")
-        schema = tuner_core.schema_of(followed[i])
-        same = [
-            e for e in followed
-            if e["outdoor_band"] == band and e.get("max_ch") == cap and tuner_core.schema_of(e) == schema
-        ]
-        before = [e for e in same if e["start"] < followed[i]["start"]][-PID_COMPARE_BEFORE:]
-        after = [e for e in same if e["start"] >= followed[i]["start"] and e["params"] == params]
-        by_band[band] = {"before": before, "after": after}
+        # Episodes on the new values, until the next change
+        run = []
+        for e in followed[i:]:
+            if e["params"] != params:
+                break
+            run.append(e)
+        for band in dict.fromkeys(e["outdoor_band"] for e in run):
+            cap = next(e.get("max_ch") for e in run if e["outdoor_band"] == band)
+            before = [
+                e for e in followed[:i] if e["outdoor_band"] == band and e.get("max_ch") == cap
+            ][-PID_COMPARE_BEFORE:]
+            after = [e for e in run if e["outdoor_band"] == band and e.get("max_ch") == cap]
+            by_band[band] = {"before": before, "after": after}
     return by_band
 
 
-def pid_progress(episodes):
-    changes = pid_changes(episodes)
+def pid_progress(episodes, room_id=None, room_name=None):
+    changes = pid_changes(episodes, room_id, room_name)
     good, parts = 0, []
     for band, c in sorted(changes.items()):
         n = len(c["after"])
@@ -135,9 +144,10 @@ def pid_progress(episodes):
     return {"done": good >= PID_BANDS, "text": text}
 
 
-def report_lines(gas_summary, nights, episodes):
-    """Lines for the evening report, one per feature."""
+def report_lines(gas_summary, nights, episodes, room_id=None, room_name=None):
+    """Lines for the evening report, one per feature; nights and episodes of the followed room."""
     lines = []
-    for p in (gas_progress(gas_summary), night_progress(nights), pid_progress(episodes)):
+    nights = night_core.for_room(nights, room_id) if room_id else nights
+    for p in (gas_progress(gas_summary), night_progress(nights), pid_progress(episodes, room_id, room_name)):
         lines.append("- " + p["text"] + ("; ready to become stable" if p["done"] else ""))
     return lines

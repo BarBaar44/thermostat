@@ -1,23 +1,17 @@
 """
-heating_tuner_core - pure analysis logic for the heating tuner
----------------------------------------------------------------
-Plain Python with no pyscript or Home Assistant dependencies, so it can be
-moved to AppDaemon or a custom integration later without changes. All I/O
-and HA access lives in apps/heating_tuner.py and modules/heating_tuner_store.py.
+tuner_core - warm-up episodes and PID advice
+--------------------------------------------
+Plain Python with no Home Assistant imports, so it is unit testable. All I/O
+and HA access lives in runner.py and store.py.
 
 An episode is a list of one-minute samples (dicts) taken while the boiler PID
 works towards a target, from the moment demand appears until POST_REACH_MIN
 minutes after the room first reaches the target.
 """
 
-# Schema 2: observed for 30 minutes after reaching target instead of 90, so its
-# overshoot and dip can come out lower. Records of different schemas are not
-# compared with each other; older records don't always carry the field.
-SCHEMA = 2
+SCHEMA = 1
 
-# Observe this long after the room first reaches target. Later on, a reheat, the
-# sun or people in the room move the temperature more than the warm-up does.
-POST_REACH_MIN = 30
+POST_REACH_MIN = 90        # observe this long after the room first reaches target
 MAX_RISE_MIN = 240         # give up on reaching target after this long
 MIN_EPISODE_MIN = 30       # shorter episodes are not judged
 DHW_MAX_MIN = 10           # more hot-water time than this disturbs the episode
@@ -49,12 +43,36 @@ def outdoor_band(temp):
     return "above_15"
 
 
-def schema_of(episode):
-    return episode.get("schema", 1)
-
-
 def room_class(room_id, followed_room_id):
+    """Stored with each record for older readers; advice and progress use is_room."""
     return "living" if room_id is not None and room_id == followed_room_id else "other"
+
+
+def is_room(record, room_id, room_name):
+    """True for a record of the room with room_id (the room followed now).
+
+    Newer records carry room_id, which survives a rename. Older ones (and the
+    copied pyscript history) only have the room name in area. Without a room
+    to compare (room_id and room_name None) the stamped room_class decides.
+    """
+    if room_id is None and room_name is None:
+        return record.get("room_class") == "living"
+    if record.get("room_id") is not None:
+        return record["room_id"] == room_id
+    if record.get("area"):
+        return record["area"].casefold() == (room_name or "").casefold()
+    return record.get("room_class") == "living"
+
+
+def judged_valid(record, room_id=None, room_name=None):
+    """A valid episode of the room followed now.
+
+    "other_room" is left out: it is stamped when the episode is recorded, so
+    an episode of a room that became the followed room later still counts.
+    """
+    reasons = record.get("invalid_reasons")
+    ok = record.get("valid", False) if reasons is None else all(r == "other_room" for r in reasons)
+    return ok and is_room(record, room_id, room_name)
 
 
 def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followed_room_id):
@@ -67,11 +85,9 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
     target = first["target"]
     reasons = list(extra_reasons)
 
-    # pyscript has no generator expressions: list comprehensions only
-    reach_idx = (
-        [i for i, s in enumerate(samples) if s["room"] is not None and s["room"] >= target]
-        or [None]
-    )[0]
+    reach_idx = next(
+        (i for i, s in enumerate(samples) if s["room"] is not None and s["room"] >= target), None
+    )
     after = samples[reach_idx:] if reach_idx is not None else []
     rooms_after = [s["room"] for s in after if s["room"] is not None]
     peak = max(rooms_after) if rooms_after else None
@@ -101,8 +117,8 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
         reasons.append("too_short")
     if room_id is None or room_id != followed_room_id:
         reasons.append("other_room")
-    # "Off" is not another room: Delta Temperature reports it as soon as the
-    # leading room reaches its target, which every successful warm-up does
+    # "Off" is not another room: the winner turns Off as soon as the leading
+    # room reaches its target, which every successful warm-up does
     if any([s["area"] not in (first["area"], "Off") for s in samples]):
         reasons.append("winner_changed")
     if any([s["target"] != target for s in samples]):
@@ -155,9 +171,7 @@ def _avg(values):
 
 
 def verdict(episode):
-    """What a single valid episode asks for, or None when it is within limits."""
-    if not episode["valid"]:
-        return None
+    """What a single valid episode (see judged_valid) asks for, or None when it is within limits."""
     if episode["overshoot"] is not None and episode["overshoot"] > OVERSHOOT_LIMIT:
         return "overshoot"
     if episode["flame_starts_per_hour"] > FLAME_STARTS_PER_HOUR or (
@@ -176,23 +190,21 @@ ACTIONS = {
 }
 
 
-def recommend(episodes, params):
+def recommend(episodes, params, *, room_id=None, room_name=None):
     """
-    Look at the most recent valid episodes of the latest valid episode's group
-    (room class + outdoor band + boiler flow limit + schema). Recommend one change only when the last
-    CONSISTENT_EPISODES of them agree. Returns None or a dict.
+    Look at the most recent valid episodes of the followed room (room_id,
+    room_name) in the latest one's group (outdoor band + boiler flow limit).
+    Recommend one change only when the last CONSISTENT_EPISODES of them
+    agree. Returns None or a dict.
     """
-    valid = [e for e in episodes if e["valid"]]
+    valid = [e for e in episodes if judged_valid(e, room_id, room_name)]
     if not valid:
         return None
     last = valid[-1]
     group = [
-        e for e in episodes
-        if e["valid"]
-        and e["room_class"] == last["room_class"]
-        and e["outdoor_band"] == last["outdoor_band"]
+        e for e in valid
+        if e["outdoor_band"] == last["outdoor_band"]
         and e.get("max_ch") == last.get("max_ch")
-        and schema_of(e) == schema_of(last)
     ][-CONSISTENT_EPISODES:]
     if len(group) < CONSISTENT_EPISODES:
         return None
@@ -206,10 +218,20 @@ def recommend(episodes, params):
     name, step, why = ACTIONS[v]
     low, high = LIMITS[name]
     old = params[name]
+    rec = {"verdict": v, "param": name, "old": old, "new": old, "why": why, "at_limit": False}
+    if not low <= old <= high:
+        # Another PID scale than the one LIMITS knows: clamping into the range
+        # could move the value against the verdict (overshoot -> raise Ki)
+        return {**rec, "outside_range": True, "low": low, "high": high}
     new = round(min(max(old * (1 + step), low), high), 5)
     if new == old:
-        return {"verdict": v, "param": name, "old": old, "new": old, "why": why, "at_limit": True}
-    return {"verdict": v, "param": name, "old": old, "new": new, "why": why, "at_limit": False}
+        return {**rec, "at_limit": True}
+    return {**rec, "new": new}
+
+
+def _or_dash(value):
+    """A value for a report line, "-" when it is missing (sensor not set or no data)."""
+    return "-" if value is None else value
 
 
 def summary_line(e):
@@ -220,9 +242,9 @@ def summary_line(e):
     line = (
         "- {} {} -> {:.1f} degC (outside {} degC): target after {} min, "
         "overshoot {:+.1f}, dip {:.1f}, {} flame starts, water max {}, return avg {}".format(
-            start, e["area"], e["target"], e["outdoor_avg"], e["rise_min"],
-            e["overshoot"], e["undershoot"], e["flame_starts"], e["water_peak"],
-            e.get("return_avg", "-"),
+            start, e["area"], e["target"], _or_dash(e["outdoor_avg"]), e["rise_min"],
+            e["overshoot"], e["undershoot"], e["flame_starts"], _or_dash(e.get("water_peak")),
+            _or_dash(e.get("return_avg")),
         )
     )
     if e.get("max_ch") is not None:
