@@ -64,14 +64,23 @@ def _quiet(sample, start_iso):
         return False
     if sample["sun_up"] or sample["garden_open"]:
         return False
-    # The night starts in the evening; "after QUIET_FROM_HOUR" means the
-    # next calendar day, before NIGHT_MAX_END_HOUR.
     return _quiet_hours(sample, start_iso)
 
 
+def _morning_date(start_iso):
+    """Local date of the morning a night runs into: the next day for a night
+    that starts in the evening, its own day for one that starts after midnight."""
+    start = datetime.fromisoformat(start_iso)
+    day = start.date() + timedelta(days=1) if start.hour >= 12 else start.date()
+    return day.isoformat()
+
+
 def _quiet_hours(sample, start_iso):
-    """Sample lies in the quiet hours (next day, QUIET_FROM_HOUR..NIGHT_MAX_END_HOUR)."""
-    return sample["t"][:10] != start_iso[:10] and QUIET_FROM_HOUR <= _hour(sample["t"]) < NIGHT_MAX_END_HOUR
+    """Sample lies in the quiet hours: the night's morning, QUIET_FROM_HOUR..NIGHT_MAX_END_HOUR."""
+    return (
+        sample["t"][:10] == _morning_date(start_iso)
+        and QUIET_FROM_HOUR <= _hour(sample["t"]) < NIGHT_MAX_END_HOUR
+    )
 
 
 def fit_k(samples, start_iso):
@@ -104,13 +113,24 @@ def _minutes(iso):
 
 
 def _room_at_hour(samples, start_iso, hour):
-    """Room temperature of the first sample at or after hour (evening hours on
-    the start day, early hours on the next day)."""
-    next_day = hour < 12
+    """Room temperature of the first sample at or after hour: evening hours on
+    the start day, early hours on the night's morning."""
+    date = _morning_date(start_iso) if hour < 12 else start_iso[:10]
     for s in samples:
-        if (s["t"][:10] != start_iso[:10]) == next_day and _hour(s["t"]) >= hour and s["room"] is not None:
+        if s["t"][:10] == date and _hour(s["t"]) >= hour and s["room"] is not None:
             return s["room"]
     return None
+
+
+def _evening_room(samples, start_iso):
+    """Room temperature at EVENING_FROM_HOUR, or None when the heating was
+    still on then. The 21:00 prediction applies the evening drop from 21:00,
+    so a night that starts later (or after midnight) can't measure it."""
+    start = datetime.fromisoformat(start_iso)
+    evening = start.replace(hour=EVENING_FROM_HOUR, minute=0, second=0, microsecond=0)
+    if start.hour < 12 or start > evening + timedelta(minutes=SAMPLE_MIN):
+        return None
+    return _room_at_hour(samples, start_iso, EVENING_FROM_HOUR)
 
 
 def analyse(samples, end_reason, prediction=None, gas_start=None, gas_end=None):
@@ -118,7 +138,7 @@ def analyse(samples, end_reason, prediction=None, gas_start=None, gas_end=None):
     first, last = samples[0], samples[-1]
     reasons = []
     k, n_quiet, mean_delta = fit_k(samples, first["t"])
-    room_evening = _room_at_hour(samples, first["t"], EVENING_FROM_HOUR)
+    room_evening = _evening_room(samples, first["t"])
     room_quiet = _room_at_hour(samples, first["t"], QUIET_FROM_HOUR)
 
     rooms = [s["room"] for s in samples if s["room"] is not None]
@@ -193,13 +213,18 @@ def _median(values):
 
 def model(nights):
     """
-    Median k and evening drop over the last K_NIGHTS valid nights.
-    Returns (k, evening_drop, n); k is None while learning.
+    Median k over the last K_NIGHTS valid nights, and median evening drop
+    over the last K_NIGHTS valid nights that measured one (heating off by
+    21:00). Returns (k, evening_drop, n), n being the smaller of the two
+    counts; k is None while either has fewer than MIN_NIGHTS.
     """
-    used = [n for n in nights if n["valid"] and n["k"] and n.get("evening_drop") is not None][-K_NIGHTS:]
-    if len(used) < MIN_NIGHTS:
-        return None, None, len(used)
-    return _median([n["k"] for n in used]), _median([n["evening_drop"] for n in used]), len(used)
+    valid = [n for n in nights if n["valid"]]
+    ks = [n["k"] for n in valid if n["k"]][-K_NIGHTS:]
+    drops = [n["evening_drop"] for n in valid if n.get("evening_drop") is not None][-K_NIGHTS:]
+    used = min(len(ks), len(drops))
+    if used < MIN_NIGHTS:
+        return None, None, used
+    return _median(ks), _median(drops), used
 
 
 def simulate(room_now, now_iso, forecast, k, until_iso):
