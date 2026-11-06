@@ -171,6 +171,8 @@ class ExperimentalRunner:
         self._heating_on: bool | None = None
         # Serialises read-modify-write of the night state file
         self._night_lock = asyncio.Lock()
+        # Days already warned about missing burner history
+        self._warned_no_burner: set[str] = set()
 
     # ------------------------------------------------------------- settings
     @property
@@ -733,7 +735,10 @@ class ExperimentalRunner:
             split["dhw_rate_source"] = rate["source"]
             gas = sum(max(h["gas"] or 0.0, 0.0) for h in hours)
             if split["flame_min"] == 0 and gas > 0.05:
-                _LOGGER.warning("No burner history for %s, gas not split", date)
+                # Retried on every run while the day is in the window: warn once
+                log = _LOGGER.debug if date in self._warned_no_burner else _LOGGER.warning
+                self._warned_no_burner.add(date)
+                log("No burner history for %s, gas not split", date)
                 continue
             split["date"] = date
             split["gas"] = round(gas, 3)
@@ -754,8 +759,13 @@ class ExperimentalRunner:
         except Exception as err:  # noqa: BLE001 - the summary works without splits
             _LOGGER.warning("Gas split failed: %s", err)
         try:
+            # From local midnight: a start mid-day makes the first daily row a partial day
             stats = await self._async_statistics(
-                {gas_id, outdoor_id}, now - timedelta(days=365), None, "day", {"change", "mean"}
+                {gas_id, outdoor_id},
+                dt_util.start_of_local_day(now - timedelta(days=365)),
+                None,
+                "day",
+                {"change", "mean"},
             )
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("No statistics for gas per degree-day: %s", err)
