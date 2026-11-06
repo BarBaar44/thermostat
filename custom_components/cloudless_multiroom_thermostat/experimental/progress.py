@@ -7,7 +7,7 @@ stable") and returns lines for the evening report. Keep the numbers
 here and in the docs in step.
 """
 
-from . import gas_core, tuner_core
+from . import gas_core, night_core, tuner_core
 
 # Gas per degree-day
 GAS_DAYS = 365             # a full year of data holds a whole heating season
@@ -81,9 +81,10 @@ def _better(before, after):
     return False
 
 
-def pid_changes(episodes):
+def pid_changes(episodes, room_id=None, room_name=None):
     """
     PID values changed by hand between valid episodes of the followed room.
+    (judged against the room followed now: tuner_core.judged_valid).
     Returns per outdoor band the last change: the episodes before it and after it.
 
     Before and after only hold episodes with the boiler flow limit (max_ch) of
@@ -94,7 +95,7 @@ def pid_changes(episodes):
     """
     followed = [
         e for e in episodes
-        if e.get("valid") and e.get("room_class") == "living"
+        if tuner_core.judged_valid(e, room_id, room_name)
         and e.get("params") and None not in e["params"].values()
     ]
     by_band = {}
@@ -111,8 +112,8 @@ def pid_changes(episodes):
     return by_band
 
 
-def pid_progress(episodes):
-    changes = pid_changes(episodes)
+def pid_progress(episodes, room_id=None, room_name=None):
+    changes = pid_changes(episodes, room_id, room_name)
     good, parts = 0, []
     for band, c in sorted(changes.items()):
         n = len(c["after"])
@@ -132,9 +133,10 @@ def pid_progress(episodes):
     return {"done": good >= PID_BANDS, "text": text}
 
 
-def report_lines(gas_summary, nights, episodes):
-    """Lines for the evening report, one per feature."""
+def report_lines(gas_summary, nights, episodes, room_id=None, room_name=None):
+    """Lines for the evening report, one per feature; nights and episodes of the followed room."""
     lines = []
-    for p in (gas_progress(gas_summary), night_progress(nights), pid_progress(episodes)):
+    nights = night_core.for_room(nights, room_id) if room_id else nights
+    for p in (gas_progress(gas_summary), night_progress(nights), pid_progress(episodes, room_id, room_name)):
         lines.append("- " + p["text"] + ("; ready to become stable" if p["done"] else ""))
     return lines

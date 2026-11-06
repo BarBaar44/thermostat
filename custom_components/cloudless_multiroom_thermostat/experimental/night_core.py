@@ -293,18 +293,16 @@ def warmup_rate(episodes, outdoor=None, *, room_id, room_name):
     return _median(rates), len(rates), None
 
 
-def _is_room(episode, room_id, room_name):
-    """Newer records carry room_id, which survives a rename. Older ones
-    (and the copied pyscript history) only have the room name."""
-    if episode.get("room_id") is not None:
-        return episode["room_id"] == room_id
-    return (episode.get("area") or "").casefold() == (room_name or "").casefold()
+def for_room(nights, room_id):
+    """Nights of the room followed now. Nights recorded before nights stored
+    their room have no room_id and are kept: one room was followed then too."""
+    return [n for n in nights if n.get("room_id") in (None, room_id)]
 
 
 def _warmup_rates(episodes, room_id, room_name):
     rates = []
     for e in episodes:
-        if not _is_room(e, room_id, room_name) or not e.get("rise_min"):
+        if not tuner_core.is_room(e, room_id, room_name) or not e.get("rise_min"):
             continue
         if "garden_doors" in e.get("invalid_reasons", []) or e.get("start_temp") is None:
             continue

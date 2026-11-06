@@ -44,7 +44,35 @@ def outdoor_band(temp):
 
 
 def room_class(room_id, followed_room_id):
+    """Stored with each record for older readers; advice and progress use is_room."""
     return "living" if room_id is not None and room_id == followed_room_id else "other"
+
+
+def is_room(record, room_id, room_name):
+    """True for a record of the room with room_id (the room followed now).
+
+    Newer records carry room_id, which survives a rename. Older ones (and the
+    copied pyscript history) only have the room name in area. Without a room
+    to compare (room_id and room_name None) the stamped room_class decides.
+    """
+    if room_id is None and room_name is None:
+        return record.get("room_class") == "living"
+    if record.get("room_id") is not None:
+        return record["room_id"] == room_id
+    if record.get("area"):
+        return record["area"].casefold() == (room_name or "").casefold()
+    return record.get("room_class") == "living"
+
+
+def judged_valid(record, room_id=None, room_name=None):
+    """A valid episode of the room followed now.
+
+    "other_room" is left out: it is stamped when the episode is recorded, so
+    an episode of a room that became the followed room later still counts.
+    """
+    reasons = record.get("invalid_reasons")
+    ok = record.get("valid", False) if reasons is None else all(r == "other_room" for r in reasons)
+    return ok and is_room(record, room_id, room_name)
 
 
 def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followed_room_id):
@@ -143,9 +171,7 @@ def _avg(values):
 
 
 def verdict(episode):
-    """What a single valid episode asks for, or None when it is within limits."""
-    if not episode["valid"]:
-        return None
+    """What a single valid episode (see judged_valid) asks for, or None when it is within limits."""
     if episode["overshoot"] is not None and episode["overshoot"] > OVERSHOOT_LIMIT:
         return "overshoot"
     if episode["flame_starts_per_hour"] > FLAME_STARTS_PER_HOUR or (
@@ -164,21 +190,20 @@ ACTIONS = {
 }
 
 
-def recommend(episodes, params):
+def recommend(episodes, params, *, room_id=None, room_name=None):
     """
-    Look at the most recent valid episodes of the latest valid episode's group
-    (room class + outdoor band + boiler flow limit). Recommend one change only when the last
-    CONSISTENT_EPISODES of them agree. Returns None or a dict.
+    Look at the most recent valid episodes of the followed room (room_id,
+    room_name) in the latest one's group (outdoor band + boiler flow limit).
+    Recommend one change only when the last CONSISTENT_EPISODES of them
+    agree. Returns None or a dict.
     """
-    valid = [e for e in episodes if e["valid"]]
+    valid = [e for e in episodes if judged_valid(e, room_id, room_name)]
     if not valid:
         return None
     last = valid[-1]
     group = [
-        e for e in episodes
-        if e["valid"]
-        and e["room_class"] == last["room_class"]
-        and e["outdoor_band"] == last["outdoor_band"]
+        e for e in valid
+        if e["outdoor_band"] == last["outdoor_band"]
         and e.get("max_ch") == last.get("max_ch")
     ][-CONSISTENT_EPISODES:]
     if len(group) < CONSISTENT_EPISODES:

@@ -404,7 +404,14 @@ class ExperimentalRunner:
         )
         await self._io(store.append_episode, self.f_episodes, record)
         history = await self._io(store.read_episodes, self.f_episodes)
-        rec = tuner_core.recommend(history, params) if all(v is not None for v in params.values()) else None
+        room = self.room
+        rec = (
+            tuner_core.recommend(
+                history, params, room_id=room.room_id if room else None, room_name=room.name if room else None
+            )
+            if all(v is not None for v in params.values())
+            else None
+        )
         tuner_state = await self._io(store.read_state, self.f_state)
         tuner_state["last_episode"] = record["start"]
         tuner_state["recommendation"] = rec
@@ -473,7 +480,12 @@ class ExperimentalRunner:
             if self._night is not None:
                 self.hass.async_create_task(self._async_finish_night("heating_on"))
         elif self._night is None and night_core.starts_night(dt_util.now().hour):
-            self._night = {"samples": [self._night_sample()], "gas_start": self._float(CONF_EXP_GAS)}
+            room = self.room
+            self._night = {
+                "samples": [self._night_sample()],
+                "gas_start": self._float(CONF_EXP_GAS),
+                "room_id": room.room_id if room else None,
+            }
             self.hass.async_create_task(self._async_save_night())
 
     async def _async_update_night_state(self, **changes: Any) -> dict[str, Any]:
@@ -492,6 +504,12 @@ class ExperimentalRunner:
         """Pick up a night that was in progress before a restart."""
         saved = (await self._io(store.read_state, self.f_night_state)).get("night")
         if not saved:
+            return
+        room = self.room
+        if saved.get("room_id") not in (None, room.room_id if room else None):
+            # Room to follow changed meanwhile: the samples would mix two rooms
+            _LOGGER.info("Dropped night started %s: the room to follow changed", saved["samples"][0]["t"])
+            await self._async_update_night_state(night=None)
             return
         self._night = saved
         if self._any_heating():
@@ -529,6 +547,7 @@ class ExperimentalRunner:
         record = night_core.analyse(
             samples, end_reason, prediction, n.get("gas_start"), self._float(CONF_EXP_GAS)
         )
+        record["room_id"] = n.get("room_id")
         await self._io(store.append_episode, self.f_nights, record)
         _LOGGER.info(
             "Night %s valid=%s tau_h=%s error=%s",
@@ -572,7 +591,7 @@ class ExperimentalRunner:
             room_now,
             now.isoformat(timespec="seconds"),
             forecast,
-            await self._io(store.read_episodes, self.f_nights),
+            night_core.for_room(await self._io(store.read_episodes, self.f_nights), room.room_id),
             await self._io(store.read_episodes, self.f_episodes),
             self._comfort_at(now).isoformat(timespec="seconds"),
             self._float(CONF_EXP_GAS_BEFORE6),
@@ -851,7 +870,9 @@ class ExperimentalRunner:
         else:
             message += "\n\nGas per degree-day: set a gas meter and an outdoor sensor to enable"
         message += "\n\nProgress to stable:\n" + "\n".join(
-            progress.report_lines(gas, nights, episodes)
+            progress.report_lines(
+                gas, nights, episodes, room.room_id if room else None, room.name if room else None
+            )
         )
         message += f"\n\n[What these mean]({DOCS_EXPERIMENTAL_URL})"
         persistent_notification.async_create(
