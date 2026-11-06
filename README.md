@@ -12,7 +12,7 @@ A Home Assistant integration for multi-room central heating without a cloud. Any
 
 ## Dashboard: Heating Control Card
 
-**[Heating Control Card](https://github.com/BarBaar44/Heating-Control-Card)** is the dashboard for this system: a Lovelace card, installed through HACS (custom repository, type Dashboard). It shows every room with its temperature, target, Heat/Off and role, highlights the room the boiler heats for, and shows the boiler state: heating, pumping or hot water, modulation, faults and pressure warnings.
+**[Heating Control Card](https://github.com/BarBaar44/Heating-Control-Card)** is the dashboard for this system: a Lovelace card, installed from the Marketplace (Home Assistant 2026.11 and newer) or HACS, as a repository added by link. It shows every room with its temperature, target, Heat/Off and role, highlights the room the boiler heats for, and shows the boiler state: heating, pumping or hot water, modulation, faults and pressure warnings.
 
 ![Heating Control Card](https://raw.githubusercontent.com/BarBaar44/Heating-Control-Card/main/shot.png)
 
@@ -36,6 +36,16 @@ The card's README lists its options, including how to pick the rooms and the boi
 ## Install
 
 Requires Home Assistant 2026.10 or newer.
+
+**Home Assistant 2026.11 and newer (Marketplace):**
+
+1. **Settings > Marketplace > Add from link**, enter `BarBaar44/Cloudless-Multiroom-Thermostat` and select **Add**. The Marketplace may ask you to connect GitHub first.
+2. Open **Cloudless Multiroom Thermostat**, select **Install** and confirm. Restart Home Assistant if the Marketplace asks for it.
+3. **Settings > Devices & services > Add integration > Cloudless Multiroom Thermostat**, if the setup didn't open by itself.
+
+Updates appear under **Settings > Updates**. After installing one, restart Home Assistant. An install from HACS moves to the Marketplace by itself when you update Home Assistant to 2026.11, with the same entities.
+
+**Home Assistant 2026.10 (HACS):**
 
 1. In HACS: **⋮ > Custom repositories**, add `https://github.com/BarBaar44/Cloudless-Multiroom-Thermostat` with type **Integration**.
 2. Install **Cloudless Multiroom Thermostat** and restart Home Assistant.

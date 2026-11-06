@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Docs:** the README explains installing from the Marketplace, which replaces HACS from Home Assistant 2026.11. The HACS steps stay for 2026.10.
+
+## Unreleased
+
 - **Warm-up episodes: the watch after reaching target ends at the first reheat.** It always ran 90 minutes, so a later reheat or other heat in the room was measured as the warm-up's overshoot and dip. It now ends when the burner starts again for heating after it went off, after 90 minutes at the latest. A warm-up that rises for a long time after one burner cycle still counts in full. Leaving the house (heating stopped, target changed) after the room reached the target no longer throws the warm-up away: it is judged on what came before, if the watch lasted at least 20 minutes. Records show how long the watch lasted (`watch_min`) and why it ended (`watch_end`). Older records measured differently, so PID advice and its before and after comparison keep them apart (schema 2), which restarts both. The morning prediction still uses all records.
 - **Docs:** the PID integral field says what to do with a firmware that doesn't report the integral times 100 like ESPHome.
 - Cleanup: an unused comfort time table and a duplicate hot-water rate constant removed, module docstrings and comments that still described the pyscript version or the Delta Temperature template brought up to date. No behaviour change.
