@@ -196,10 +196,15 @@ def recommend(episodes, params):
     name, step, why = ACTIONS[v]
     low, high = LIMITS[name]
     old = params[name]
+    rec = {"verdict": v, "param": name, "old": old, "new": old, "why": why, "at_limit": False}
+    if not low <= old <= high:
+        # Another PID scale than the one LIMITS knows: clamping into the range
+        # could move the value against the verdict (overshoot -> raise Ki)
+        return {**rec, "outside_range": True, "low": low, "high": high}
     new = round(min(max(old * (1 + step), low), high), 5)
     if new == old:
-        return {"verdict": v, "param": name, "old": old, "new": old, "why": why, "at_limit": True}
-    return {"verdict": v, "param": name, "old": old, "new": new, "why": why, "at_limit": False}
+        return {**rec, "at_limit": True}
+    return {**rec, "new": new}
 
 
 def _or_dash(value):

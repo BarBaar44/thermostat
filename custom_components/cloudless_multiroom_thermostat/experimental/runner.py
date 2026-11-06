@@ -421,6 +421,11 @@ class ExperimentalRunner:
             return "no PID numbers configured"
         if rec is None:
             return "no change"
+        if rec.get("outside_range"):
+            return (
+                f"{rec['param']} {rec['old']} is outside the range the advice knows "
+                f"({rec['low']} to {rec['high']}) - {rec['why']}"
+            )
         if rec["at_limit"]:
             return f"{rec['param']} at its limit ({rec['old']}) - {rec['why']}"
         return f"{rec['param']} {rec['old']} -> {rec['new']} ({rec['why']})"
