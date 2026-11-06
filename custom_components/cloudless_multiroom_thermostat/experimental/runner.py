@@ -347,13 +347,19 @@ class ExperimentalRunner:
         ):
             episode["reached"] = n - 1
 
+        watch_ended = (
+            episode["reached"] is not None
+            and tuner_core.watch_end(episode["samples"], episode["reached"])[0] is not None
+        )
         if not ch_enabled:
+            # After the room reached target, a stop ends the watch: judged on
+            # what came before, unless the watch was too short to say much
             await self._async_finish(
                 ["heating_stopped"]
-                if episode["reached"] is None or n - episode["reached"] < tuner_core.POST_REACH_MIN
+                if episode["reached"] is None or n - episode["reached"] < tuner_core.MIN_WATCH_MIN
                 else []
             )
-        elif episode["reached"] is not None and n - episode["reached"] >= tuner_core.POST_REACH_MIN:
+        elif watch_ended:
             await self._async_finish([])
         elif episode["reached"] is None and n >= tuner_core.MAX_RISE_MIN:
             await self._async_finish([])

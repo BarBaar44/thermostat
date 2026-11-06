@@ -95,7 +95,9 @@ def pid_changes(episodes, room_id=None, room_name=None):
     the band's first episode after the change: a lower limit alone slows a
     warm-up and cuts its overshoot, which would otherwise be credited to the
     PID. Records without max_ch (older ones, or the field not set) only
-    compare with each other.
+    compare with each other. The same goes for the schema: schema 2 ends the
+    watch after reaching target at the first reheat, so it measures overshoot
+    and dip differently, whatever the PID values are.
     """
     followed = [
         e for e in episodes
@@ -114,11 +116,17 @@ def pid_changes(episodes, room_id=None, room_name=None):
                 break
             run.append(e)
         for band in dict.fromkeys(e["outdoor_band"] for e in run):
-            cap = next(e.get("max_ch") for e in run if e["outdoor_band"] == band)
-            before = [
-                e for e in followed[:i] if e["outdoor_band"] == band and e.get("max_ch") == cap
-            ][-PID_COMPARE_BEFORE:]
-            after = [e for e in run if e["outdoor_band"] == band and e.get("max_ch") == cap]
+            first = next(e for e in run if e["outdoor_band"] == band)
+            cap, schema = first.get("max_ch"), tuner_core.schema_of(first)
+
+            def comparable(e, band=band, cap=cap, schema=schema):
+                return (
+                    e["outdoor_band"] == band and e.get("max_ch") == cap
+                    and tuner_core.schema_of(e) == schema
+                )
+
+            before = [e for e in followed[:i] if comparable(e)][-PID_COMPARE_BEFORE:]
+            after = [e for e in run if comparable(e)]
             by_band[band] = {"before": before, "after": after}
     return by_band
 
