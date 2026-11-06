@@ -87,3 +87,31 @@ def test_pid_progress_compares_same_flow_limit() -> None:
     # Same limit on both sides: compared as before
     before = [{**e, "max_ch": 40.0} for e in before]
     assert "0_8 5/5 better" in progress.pid_progress(before + after)["text"]
+
+
+def _room_ep(day: int, params: dict, overshoot: float, room_id: str, followed_then: str) -> dict:
+    """An episode as recorded while followed_then was the room to follow."""
+    other = room_id != followed_then
+    return {
+        **_ep(day, params, overshoot, room_class="other" if other else "living"),
+        "room_id": room_id, "area": room_id.title(),
+        "valid": not other, "invalid_reasons": ["other_room"] if other else [],
+    }
+
+
+def test_pid_progress_follows_the_room_followed_now() -> None:
+    # Recorded while "a" was followed; then the room to follow became "b"
+    episodes = [_room_ep(d, P1, 0.6, "b", "a") for d in range(1, 6)]
+    episodes += [_room_ep(d, P2, 0.3, "b", "a") for d in range(6, 11)]
+    episodes += [_room_ep(d, P1, 0.6, "a", "a") for d in range(11, 13)]
+    by_b = progress.pid_changes(episodes, "b", "B")
+    assert len(by_b["0_8"]["before"]) == 5 and len(by_b["0_8"]["after"]) == 5
+    assert "0_8 5/5 better" in progress.pid_progress(episodes, "b", "B")["text"]
+    # Room "a" now only has its own episodes, all with the same values
+    assert progress.pid_changes(episodes, "a", "A") == {}
+
+
+def test_report_lines_count_nights_of_the_followed_room() -> None:
+    nights = [{**_night(d, 0.1, 5.0), "room_id": "b"} for d in range(1, 4)] + [_night(4, 0.1, 5.0)]
+    lines = progress.report_lines(None, nights, [], "a", "A")
+    assert "Night model: 1 of 30" in lines[1]
