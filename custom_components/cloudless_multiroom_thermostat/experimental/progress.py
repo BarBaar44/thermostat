@@ -81,15 +81,19 @@ def _better(before, after):
 
 def pid_changes(episodes, room_id=None, room_name=None):
     """
-    PID values changed by hand between valid episodes of the followed room.
+    PID values changed by hand between valid episodes of the followed room
     (judged against the room followed now: tuner_core.judged_valid).
     Returns per outdoor band the last change: the episodes before it and after it.
 
+    There is one set of PID values for all weather, so a change counts in
+    every band with an episode on the new values after it, not only in the
+    band of the first episode after it.
+
     Before and after only hold episodes with the boiler flow limit (max_ch) of
-    the first episode after the change: a lower limit alone slows a warm-up
-    and cuts its overshoot, which would otherwise be credited to the PID.
-    Records without max_ch (older ones, or the field not set) only compare
-    with each other.
+    the band's first episode after the change: a lower limit alone slows a
+    warm-up and cuts its overshoot, which would otherwise be credited to the
+    PID. Records without max_ch (older ones, or the field not set) only
+    compare with each other.
     """
     followed = [
         e for e in episodes
@@ -100,13 +104,20 @@ def pid_changes(episodes, room_id=None, room_name=None):
     for i in range(1, len(followed)):
         if followed[i]["params"] == followed[i - 1]["params"]:
             continue
-        band = followed[i]["outdoor_band"]
         params = followed[i]["params"]
-        cap = followed[i].get("max_ch")
-        same = [e for e in followed if e["outdoor_band"] == band and e.get("max_ch") == cap]
-        before = [e for e in followed[:i] if e["outdoor_band"] == band and e.get("max_ch") == cap][-PID_COMPARE_BEFORE:]
-        after = [e for e in same if e["start"] >= followed[i]["start"] and e["params"] == params]
-        by_band[band] = {"before": before, "after": after}
+        # Episodes on the new values, until the next change
+        run = []
+        for e in followed[i:]:
+            if e["params"] != params:
+                break
+            run.append(e)
+        for band in dict.fromkeys(e["outdoor_band"] for e in run):
+            cap = next(e.get("max_ch") for e in run if e["outdoor_band"] == band)
+            before = [
+                e for e in followed[:i] if e["outdoor_band"] == band and e.get("max_ch") == cap
+            ][-PID_COMPARE_BEFORE:]
+            after = [e for e in run if e["outdoor_band"] == band and e.get("max_ch") == cap]
+            by_band[band] = {"before": before, "after": after}
     return by_band
 
 
