@@ -838,6 +838,20 @@ def test_recommend_follows_the_room_followed_now() -> None:
 def test_for_room_keeps_nights_without_a_room() -> None:
     nights = [{"room_id": "a"}, {"room_id": "b"}, {}]
     assert night_core.for_room(nights, "a") == [{"room_id": "a"}, {}]
+def test_recommend_never_moves_against_the_verdict() -> None:
+    overshoot = [_judged(None), _judged(None)]
+    # Ki below the known range: clamping would have raised it on overshoot
+    rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.0002, "kd": 0.0})
+    assert rec["outside_range"] and rec["new"] == rec["old"] == 0.0002
+    slow = [{**e, "overshoot": 0.1, "rise_min": 90} for e in overshoot]
+    # Kp on another scale: clamping would have cut it to 1.5 on a slow warm-up
+    rec = tuner_core.recommend(slow, {"kp": 12.0, "ki": 0.003, "kd": 0.0})
+    assert rec["param"] == "kp" and rec["outside_range"] and rec["new"] == 12.0
+    # Inside the range the 10% step and the limits are unchanged
+    rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.003, "kd": 0.0})
+    assert rec["new"] == 0.0027 and not rec["at_limit"] and "outside_range" not in rec
+    rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.0005, "kd": 0.0})
+    assert rec["at_limit"] and rec["new"] == 0.0005
 async def test_stored_values_shown_after_reload(hass: HomeAssistant) -> None:
     from custom_components.cloudless_multiroom_thermostat.experimental import store
 
