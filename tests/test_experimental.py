@@ -193,7 +193,7 @@ async def test_warm_up_episode_recorded(hass: HomeAssistant) -> None:
             temp += 0.03  # reaches 19.0 after about 34 minutes
         await _minute(hass, runner, temp, flame=minute % 20 < 15)
     assert entry.runtime_data.winner.name == "Off", "the winner turns Off once the room reaches target"
-    assert runner._episode is None, "episode should finish 30 minutes after reaching target"
+    assert runner._episode is None, "the watch ends at the first reheat after reaching target"
 
     records = [json.loads(line) for line in open(runner.f_episodes, encoding="utf-8")]
     assert len(records) == 1
@@ -205,6 +205,8 @@ async def test_warm_up_episode_recorded(hass: HomeAssistant) -> None:
     assert record["overshoot"] is not None and record["overshoot"] > 0
     for reason in ("other_room", "target_changed", "target_not_reached"):
         assert reason not in record["invalid_reasons"]
+    assert record["schema"] == 2 and record["watch_end"] == "reheat"
+    assert 0 < record["watch_min"] < tuner_core.POST_REACH_MIN
     await hass.async_block_till_done()
     state = hass.states.get("sensor.heating_last_warm_up_overshoot")
     assert state.attributes["room"] == "Living" and state.attributes["experimental"] is True
@@ -1004,3 +1006,74 @@ def test_recommend_keeps_schemas_apart() -> None:
     assert tuner_core.recommend([ep(1), ep(2)], params) is None, "one episode of the new schema is not enough"
     assert tuner_core.recommend([ep(1), ep(1)], params)["param"] == "ki", "older records agree among themselves"
     assert tuner_core.recommend([ep(1), ep(2), ep(2)], params)["param"] == "ki"
+
+
+def _watched(after: list[tuple[float, bool]], **change) -> list[dict]:
+    """A 20-minute rise to target 20.0, then one sample per (room, flame) pair; change applies from the first."""
+    samples = _samples(minutes=21)  # the last sample reaches 20.0, at minute 20
+    for i, (room, flame) in enumerate(after):
+        samples.append({**samples[-1], "t": f"2026-11-01T08:{i % 60:02d}:00+01:00", "room": room, "flame": flame, **change})
+    return samples
+
+
+def test_watch_ends_at_the_first_reheat() -> None:
+    reach = 20
+    # Burner keeps going, goes off, then starts again: the reheat ends the watch
+    samples = _watched([(20.2, False)] * 10 + [(20.1, True)] * 5)
+    assert tuner_core.watch_end(samples, reach) == (31, "reheat")
+    # A hot-water draw lights the burner too, but is not a reheat
+    samples = _watched([(20.2, False)] * 10 + [(20.2, True)] * 5, dhw=True)
+    assert tuner_core.watch_end(samples, reach) == (None, None)
+    # No reheat: the watch runs its full length
+    samples = _watched([(20.2, False)] * 95)
+    assert tuner_core.watch_end(samples, reach) == (reach + tuner_core.POST_REACH_MIN, "cap")
+
+
+def test_late_peak_of_the_warm_up_itself_is_kept() -> None:
+    """One burner cycle, the room keeps rising for an hour: that overshoot is the warm-up's."""
+    after = [(20.0 + 0.01 * i, False) for i in range(60)] + [(20.5, False)] * 40
+    e = tuner_core.analyse(_watched(after), {}, "cooled_down", room_id="a", followed_room_id="a")
+    assert e["overshoot"] == 0.59 and e["watch_end"] == "cap"
+
+
+def test_heat_after_a_reheat_is_left_out() -> None:
+    after = [(20.1, False)] * 10 + [(20.1 + 0.05 * i, True) for i in range(30)]
+    e = tuner_core.analyse(_watched(after), {}, "cooled_down", room_id="a", followed_room_id="a")
+    assert e["watch_end"] == "reheat" and e["overshoot"] == pytest.approx(0.1, abs=0.01)
+
+
+def test_target_change_after_a_long_enough_watch_keeps_the_warm_up() -> None:
+    after = [(20.1, False)] * 30
+    samples = _watched(after) + [{**s, "target": 16.0} for s in _watched([(19.0, False)] * 10)[-10:]]
+    e = tuner_core.analyse(samples, {}, "cooled_down", room_id="a", followed_room_id="a")
+    assert e["valid"] and e["watch_end"] == "target_changed" and e["watch_min"] == 31
+    assert e["undershoot"] == 0.0, "the drop after leaving is not a dip of the warm-up"
+    # Changed after 10 minutes: too short a watch to judge
+    samples = _watched([(20.1, False)] * 10) + [{**s, "target": 16.0} for s in _watched([(19.0, False)] * 10)[-10:]]
+    e = tuner_core.analyse(samples, {}, "cooled_down", room_id="a", followed_room_id="a")
+    assert not e["valid"] and "target_changed" in e["invalid_reasons"]
+
+
+async def test_heating_stopped_after_a_long_enough_watch_keeps_the_warm_up(hass: HomeAssistant) -> None:
+    entry = await _setup(hass, {**EXP, "exp_room": None})
+    runner = entry.runtime_data.experimental
+    await hass.services.async_call(
+        "climate", "set_hvac_mode", {"entity_id": "climate.living", "hvac_mode": "heat"}, blocking=True
+    )
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=3))
+    await hass.async_block_till_done()
+    temp = 18.0
+    for minute in range(70):  # reaches 19.0 after about 34 minutes, burner stays on
+        if minute < 40:
+            temp += 0.03
+        await _minute(hass, runner, temp)
+    await hass.services.async_call(
+        "climate", "set_hvac_mode", {"entity_id": "climate.living", "hvac_mode": "off"}, blocking=True
+    )
+    await _minute(hass, runner, temp)
+    assert runner._episode is None
+    record = json.loads(open(runner.f_episodes, encoding="utf-8").readlines()[-1])
+    assert record["valid"], record["invalid_reasons"]
+    # Switching the room off changes its target first, which ends the watch the same way
+    assert record["watch_end"] in ("heating_stopped", "target_changed")
+    assert record["watch_min"] >= tuner_core.MIN_WATCH_MIN

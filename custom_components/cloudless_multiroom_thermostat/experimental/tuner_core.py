@@ -5,13 +5,18 @@ Plain Python with no Home Assistant imports, so it is unit testable. All I/O
 and HA access lives in runner.py and store.py.
 
 An episode is a list of one-minute samples (dicts) taken while the boiler PID
-works towards a target, from the moment demand appears until POST_REACH_MIN
-minutes after the room first reaches the target.
+works towards a target, from the moment demand appears until the watch after
+reaching the target ends (see watch_end).
 """
 
-SCHEMA = 1
+# Schema 2: the watch after reaching target ends at the first reheat (or an
+# earlier disturbance) instead of always running 90 minutes, so overshoot, dip
+# and flame starts are measured differently. Records of different schemas are
+# not compared with each other; records from before schema 1 carry no field.
+SCHEMA = 2
 
-POST_REACH_MIN = 90        # observe this long after the room first reaches target
+POST_REACH_MIN = 90        # longest watch after the room first reaches target
+MIN_WATCH_MIN = 20         # a watch cut short before this is not judged
 MAX_RISE_MIN = 240         # give up on reaching target after this long
 MIN_EPISODE_MIN = 30       # shorter episodes are not judged
 DHW_MAX_MIN = 10           # more hot-water time than this disturbs the episode
@@ -41,6 +46,45 @@ def outdoor_band(temp):
         if temp < upper:
             return name
     return "above_15"
+
+
+def schema_of(record):
+    return record.get("schema", 1)
+
+
+def watch_end(samples, reach_idx):
+    """
+    Where the watch after the room first reached target ends, and why:
+    (index of the first sample left out, reason), or (None, None) while it
+    goes on.
+
+    - "reheat": the burner starts for heating again after it went off. What
+      follows is the next heat, not this warm-up (a hot-water draw doesn't count).
+    - "target_changed", "winner_changed", "garden_doors": a disturbance. The
+      episode is judged on what came before it if the watch lasted at least
+      MIN_WATCH_MIN, otherwise the disturbance makes it invalid.
+    - "cap": POST_REACH_MIN minutes without any of these.
+    """
+    first = samples[0]
+    cap = reach_idx + POST_REACH_MIN
+    burner_off = False
+    for i in range(reach_idx + 1, min(len(samples), cap)):
+        s = samples[i]
+        if s["target"] != first["target"]:
+            return i, "target_changed"
+        if s["area"] not in (first["area"], "Off"):
+            return i, "winner_changed"
+        if s["garden_paused"]:
+            return i, "garden_doors"
+        if s["dhw"]:
+            continue
+        if not s["flame"]:
+            burner_off = True
+        elif burner_off:
+            return i, "reheat"
+    if len(samples) >= cap:
+        return cap, "cap"
+    return None, None
 
 
 def room_class(room_id, followed_room_id):
@@ -88,6 +132,16 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
     reach_idx = next(
         (i for i, s in enumerate(samples) if s["room"] is not None and s["room"] >= target), None
     )
+    watch_min = watch_reason = None
+    if reach_idx is not None:
+        end, watch_reason = watch_end(samples, reach_idx)
+        if end is not None:
+            samples = samples[:end]
+        else:
+            watch_reason = "heating_stopped"  # the runner ended it: heating went off
+        watch_min = len(samples) - reach_idx
+        if watch_reason in ("target_changed", "winner_changed", "garden_doors") and watch_min < MIN_WATCH_MIN:
+            reasons.append(watch_reason)
     after = samples[reach_idx:] if reach_idx is not None else []
     rooms_after = [s["room"] for s in after if s["room"] is not None]
     peak = max(rooms_after) if rooms_after else None
@@ -134,6 +188,8 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
 
     return {
         "schema": SCHEMA,
+        "watch_min": watch_min,
+        "watch_end": watch_reason,
         "start": first["t"],
         "end": samples[-1]["t"],
         "start_reason": start_reason,
@@ -193,7 +249,8 @@ ACTIONS = {
 def recommend(episodes, params, *, room_id=None, room_name=None):
     """
     Look at the most recent valid episodes of the followed room (room_id,
-    room_name) in the latest one's group (outdoor band + boiler flow limit).
+    room_name) in the latest one's group (outdoor band + boiler flow limit +
+    schema).
     Recommend one change only when the last CONSISTENT_EPISODES of them
     agree. Returns None or a dict.
     """
@@ -205,6 +262,7 @@ def recommend(episodes, params, *, room_id=None, room_name=None):
         e for e in valid
         if e["outdoor_band"] == last["outdoor_band"]
         and e.get("max_ch") == last.get("max_ch")
+        and schema_of(e) == schema_of(last)
     ][-CONSISTENT_EPISODES:]
     if len(group) < CONSISTENT_EPISODES:
         return None
