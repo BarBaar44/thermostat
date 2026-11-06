@@ -25,7 +25,13 @@ def append_episode(path: str, episode: dict[str, Any]) -> None:
         os.fsync(f.fileno())
 
 
-def read_episodes(path: str, last_n: int = 200) -> list[dict[str, Any]]:
+def read_episodes(path: str, last_n: int | None = None) -> list[dict[str, Any]]:
+    """All records in path, or the last last_n.
+
+    The whole file is parsed either way, so there is no saving in a cap: a
+    year of warm-ups is a few thousand lines (about 700 bytes each), parsed
+    in tens of milliseconds, and the progress check needs that history.
+    """
     if not os.path.exists(path):
         return []
     episodes = []
@@ -38,7 +44,7 @@ def read_episodes(path: str, last_n: int = 200) -> list[dict[str, Any]]:
                 episodes.append(json.loads(line))
             except ValueError:
                 continue  # a torn last line after a crash
-    return episodes[-last_n:]
+    return episodes if last_n is None else episodes[-last_n:]
 
 
 def write_state(path: str, state: dict[str, Any]) -> None:
