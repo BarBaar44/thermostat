@@ -7,7 +7,7 @@ stable") and returns lines for the evening report. Keep the numbers
 here and in the docs in step.
 """
 
-from . import night_core, tuner_core
+from . import gas_core, night_core, tuner_core
 
 # Gas per degree-day
 GAS_DAYS = 365             # a full year of data holds a whole heating season
@@ -37,7 +37,9 @@ def gas_progress(summary):
         rate_ok = True
     elif rate["source"] == "default":
         rate_ok = False
-        text += "; hot-water rate still the default ({} of 60 minutes measured)".format(rate["minutes"])
+        text += "; hot-water rate still the default ({} of {} minutes measured)".format(
+            rate["minutes"], gas_core.RATE_MIN_MINUTES
+        )
     else:
         rate_ok = True
         text += "; hot-water rate {}".format(rate["source"])

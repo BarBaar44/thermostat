@@ -179,7 +179,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 - **What:** a sensor with the PID's integral term: the part of its output built up from how long the room has been below target.
 - **Why:** recorded with each warm-up (lowest and highest value) to help explain an overshoot: an integral that keeps building up is a classic cause.
 - **Required:** no. It does not affect the advice.
-- **Where from:** ESPHome's PID climate can publish it as a sensor (`type: INTEGRAL`). ESPHome reports it as a percentage (times 100); the integration divides it by 100.
+- **Where from:** ESPHome's PID climate can publish it as a sensor (`type: INTEGRAL`). ESPHome reports it as a percentage (times 100); the integration divides it by 100. A sensor from other firmware that reports the plain value would come out 100 times too small: leave the field empty, or feed it a template sensor that multiplies by 100.
 
 ### Gas price tomorrow before 06:00 / after 06:00
 

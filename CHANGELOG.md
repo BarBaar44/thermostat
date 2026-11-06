@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Docs:** the PID integral field says what to do with a firmware that doesn't report the integral times 100 like ESPHome.
+- Cleanup: an unused comfort time table and a duplicate hot-water rate constant removed, module docstrings and comments that still described the pyscript version or the Delta Temperature template brought up to date. No behaviour change.
 - **Fix:** an on/off (switch) heat source kept running for a room 0.01 °C below target, which the winner and the room role already round to 0.0 (no demand). The switch now rounds the gap the same way.
 - **Fix, gas per degree-day:** the year of daily statistics started at the current time a year ago, so its first day only held a few evening hours and could pull down the hot-water base. It now starts at midnight.
 - The "No burner history" warning for a day whose gas can't be split appears once instead of on every run for six days.

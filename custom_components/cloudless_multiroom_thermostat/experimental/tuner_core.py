@@ -1,9 +1,8 @@
 """
-heating_tuner_core - pure analysis logic for the heating tuner
----------------------------------------------------------------
-Plain Python with no pyscript or Home Assistant dependencies, so it can be
-moved to AppDaemon or a custom integration later without changes. All I/O
-and HA access lives in apps/heating_tuner.py and modules/heating_tuner_store.py.
+tuner_core - warm-up episodes and PID advice
+--------------------------------------------
+Plain Python with no Home Assistant imports, so it is unit testable. All I/O
+and HA access lives in runner.py and store.py.
 
 An episode is a list of one-minute samples (dicts) taken while the boiler PID
 works towards a target, from the moment demand appears until POST_REACH_MIN
@@ -86,11 +85,9 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
     target = first["target"]
     reasons = list(extra_reasons)
 
-    # pyscript has no generator expressions: list comprehensions only
-    reach_idx = (
-        [i for i, s in enumerate(samples) if s["room"] is not None and s["room"] >= target]
-        or [None]
-    )[0]
+    reach_idx = next(
+        (i for i, s in enumerate(samples) if s["room"] is not None and s["room"] >= target), None
+    )
     after = samples[reach_idx:] if reach_idx is not None else []
     rooms_after = [s["room"] for s in after if s["room"] is not None]
     peak = max(rooms_after) if rooms_after else None
@@ -120,8 +117,8 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
         reasons.append("too_short")
     if room_id is None or room_id != followed_room_id:
         reasons.append("other_room")
-    # "Off" is not another room: Delta Temperature reports it as soon as the
-    # leading room reaches its target, which every successful warm-up does
+    # "Off" is not another room: the winner turns Off as soon as the leading
+    # room reaches its target, which every successful warm-up does
     if any([s["area"] not in (first["area"], "Off") for s in samples]):
         reasons.append("winner_changed")
     if any([s["target"] != target for s in samples]):

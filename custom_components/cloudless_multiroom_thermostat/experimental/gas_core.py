@@ -1,8 +1,7 @@
 """
-heating_gas_core - gas per degree-day for the heating tuner
--------------------------------------------------------------
-Plain Python with no pyscript or Home Assistant dependencies, like
-heating_tuner_core. Observe only.
+gas_core - gas per degree-day
+-----------------------------
+Plain Python with no Home Assistant imports, like tuner_core. Observe only.
 
 Gas use depends mostly on the weather, so raw m3 per day can't show whether a
 change saved anything. Degree-days normalise for that: a day with an average
@@ -35,12 +34,14 @@ the last 7 and 28 days at home. The day you come back stays in - warming the
 house up again is real gas the trip cost.
 """
 
+from ..const import DEFAULT_DHW_RATE  # m3 per hot-water minute until measured
+
+
 BASE_TEMP = 18.0       # degree-day base temperature (degC)
 BASE_MAX_DD = 0.5      # days at or below this count as "no heating" for the base
 MIN_BASE_DAYS = 5      # need this many no-heating days for a base estimate
 MIN_WINDOW_DD = 5.0    # a window needs this many degree-days for a value
 MAX_DAY_GAS = 20.0     # m3; larger daily changes are meter glitches
-DHW_RATE = 0.019       # m3 per hot-water minute until measured (one boiler, 2026-10, ~11 kW)
 BASE_RECENT_DAYS = 28  # measured base: median of this many latest split days
 RATE_MIN_DRAW = 3.0    # hot-water minutes a draw needs to count for the measured rate
 RATE_MIN_MINUTES = 60  # measured rate needs this many hot-water minutes in total
@@ -86,7 +87,7 @@ def nobody_home(changes, start, end):
     return seen
 
 
-def split_day(hours, dhw_rate=DHW_RATE):
+def split_day(hours, dhw_rate=DEFAULT_DHW_RATE):
     """
     Split one day's gas into hot water and heating. `hours` is a list of
     {"gas": m3, "ch": min, "dhw": min, "flame": min} per hour: minutes with
@@ -94,7 +95,7 @@ def split_day(hours, dhw_rate=DHW_RATE):
 
     An hour without heating demand burned only for hot water. In an hour with
     heating demand the hot-water part is its hot-water minutes at `dhw_rate`
-    (m3 per hot-water minute: the setting, the measured rate or DHW_RATE).
+    (m3 per hot-water minute: the setting, the measured rate or DEFAULT_DHW_RATE).
     Gas in an hour without any burner or heating time is meter lag and goes
     with the hour before.
     """
