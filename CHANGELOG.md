@@ -1,14 +1,11 @@
 # Changelog
 
-## 1.5.0
+## Unreleased
 
 - **Docs:** the README explains installing from the Marketplace, which replaces HACS from Home Assistant 2026.11. The HACS steps stay for 2026.10.
 
-## Unreleased
+## 1.5.0
 
-- **Warm-up episodes: the watch after reaching target ends at the first reheat.** It always ran 90 minutes, so a later reheat or other heat in the room was measured as the warm-up's overshoot and dip. It now ends when the burner starts again for heating after it went off, after 90 minutes at the latest. A warm-up that rises for a long time after one burner cycle still counts in full. Leaving the house (heating stopped, target changed) after the room reached the target no longer throws the warm-up away: it is judged on what came before, if the watch lasted at least 20 minutes. Records show how long the watch lasted (`watch_min`) and why it ended (`watch_end`). Older records measured differently, so PID advice and its before and after comparison keep them apart (schema 2), which restarts both. The morning prediction still uses all records.
-- **Docs:** the PID integral field says what to do with a firmware that doesn't report the integral times 100 like ESPHome.
-- Cleanup: an unused comfort time table and a duplicate hot-water rate constant removed, module docstrings and comments that still described the pyscript version or the Delta Temperature template brought up to date. No behaviour change.
 - **Fix:** a learning features file that can't be read (not valid JSON, for example after a disk problem) stopped the whole integration from loading, so the heating didn't run. Such a file is now moved aside as `<name>.corrupt-<time>`, the feature starts over, and any other error while starting the learning features is logged while the heating carries on without them.
 - **Fix:** changing a room's eco or warm temperature in Edit room did nothing while that preset was active: the room kept the old temperature until the preset was selected again. A room on a preset now takes its temperature from the room settings after an edit or a restart, and a manual target is kept within a changed minimum and maximum.
 - **Fix:** a TRV that was switched off (on the device, or by another automation) stayed off for good: the integration only wrote setpoints, which an off TRV ignores, and kept rewriting them. A TRV that reports off and supports heat is now set back to heat. The integration holds rooms off with the off temperature, never with the TRV's off mode, so this doesn't change how rooms switch off.
