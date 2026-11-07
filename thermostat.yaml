@@ -10,16 +10,30 @@ opentherm:
   t_room: ch_room_temperature
 
 output:
+  # Fixed 0-100 degC request range; the flow limit is the "Central heating max
+  # flow temperature" number below. Don't use auto_max_value or the boiler's
+  # panel maximum as the limit: on this ATAG auto_max_value left the range at
+  # 0-100 and the boiler followed requests up to its own bound of 50 degC.
   - platform: opentherm
     t_set:
       id: t_set
       min_value: 0
-      # Flow limit in degC. The boiler follows a request up to its own upper
-      # bound (50), whatever its panel maximum says, and auto_max_value left
-      # the range at 0-100. The PID output is a fraction of this range, so a
-      # new limit also means rescaling Kp and Ki by the same factor.
-      max_value: 40
+      max_value: 100
       zero_means_zero: true
+  # What the PID drives: its output (0-1) times the flow limit. The PID output
+  # is a fraction of the limit, so a lower limit also means gentler heating
+  # with the same Kp and Ki; to keep the old response, scale Kp, Ki and Kd by
+  # old limit / new limit. 0 stays 0 (boiler off).
+  - platform: template
+    id: ch_flow_request
+    type: float
+    write_action:
+      - output.set_level:
+          id: t_set
+          level: !lambda |-
+            float limit = id(max_flow).state;
+            if (isnan(limit)) limit = 40;
+            return state * limit / 100.0;
 
 script:
   - id: apply_pid_params
@@ -32,6 +46,21 @@ script:
 
 # main_climate tuning, adjustable from Home Assistant without reflashing
 number:
+  # Highest flow temperature the thermostat asks for. Point the integration's
+  # "Boiler maximum flow temperature" field at this entity, so warm-ups with
+  # different limits are kept apart and the PID advice limits follow it.
+  - platform: template
+    name: "Central heating max flow temperature"
+    id: max_flow
+    entity_category: config
+    unit_of_measurement: "°C"
+    device_class: temperature
+    optimistic: true
+    restore_value: true
+    initial_value: 40
+    min_value: 25
+    max_value: 80
+    step: 0.5
   - platform: template
     name: "Central heating Kp"
     id: main_kp
@@ -40,7 +69,7 @@ number:
     restore_value: true
     initial_value: 1.75
     min_value: 0
-    max_value: 3
+    max_value: 6
     step: 0.01
     on_value:
       - script.execute: apply_pid_params
@@ -64,7 +93,7 @@ number:
     restore_value: true
     initial_value: 0
     min_value: 0
-    max_value: 3000
+    max_value: 8000
     step: 10
     on_value:
       - script.execute: apply_pid_params
@@ -177,7 +206,7 @@ climate:
   - platform: pid
     id: main_climate
     name: "Central heating"
-    heat_output: t_set
+    heat_output: ch_flow_request
     default_target_temperature: 18
     sensor: ch_room_temperature
     control_parameters: 

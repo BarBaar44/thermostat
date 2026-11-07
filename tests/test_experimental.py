@@ -935,6 +935,21 @@ def test_recommend_never_moves_against_the_verdict() -> None:
     assert rec["new"] == 0.0027 and not rec["at_limit"] and "outside_range" not in rec
     rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.0005, "kd": 0.0})
     assert rec["at_limit"] and rec["new"] == 0.0005
+
+
+def test_limits_follow_the_flow_limit() -> None:
+    assert tuner_core.limits("kp") == (0.3, 1.5)
+    assert tuner_core.limits("kp", 40.0) == (0.75, 3.75)
+    assert tuner_core.limits("ki", 40.0) == (0.00125, 0.025)
+    assert tuner_core.limits("kd", 50.0) == (0.0, 4000.0)
+    # 1.75 at a 40 degC limit is 0.7 at 100: inside the range, so advice
+    overshoot = [_judged(40.0), _judged(40.0)]
+    rec = tuner_core.recommend(overshoot, {"kp": 1.75, "ki": 0.0075, "kd": 0.0})
+    assert rec["param"] == "ki" and rec["new"] == 0.00675 and "outside_range" not in rec
+    # Without a recorded limit the 0 to 100 limits apply, so 1.75 is outside
+    slow = [{**e, "max_ch": None, "overshoot": 0.1, "rise_min": 90} for e in overshoot]
+    rec = tuner_core.recommend(slow, {"kp": 1.75, "ki": 0.0075, "kd": 0.0})
+    assert rec["outside_range"] and rec["high"] == 1.5
 async def test_stored_values_shown_after_reload(hass: HomeAssistant) -> None:
     from custom_components.cloudless_multiroom_thermostat.experimental import store
 

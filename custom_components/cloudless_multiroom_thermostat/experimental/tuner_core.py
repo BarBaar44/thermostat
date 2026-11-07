@@ -34,7 +34,21 @@ STEP = 0.10                # 10 % parameter step
 # their own. The class name "living" is what the records store for the
 # followed room; it is kept so older records group with new ones.
 
+# Advice limits for an ESPHome PID whose output spans a 0 to 100 degC flow
+# range. The PID output is a fraction of that range, so the same flow response
+# needs gains in inverse proportion to it: at a 40 degC limit every limit is
+# 100 / 40 = 2.5 times higher (see limits()).
 LIMITS = {"kp": (0.3, 1.5), "ki": (0.0005, 0.01), "kd": (0.0, 2000.0)}
+LIMITS_RANGE = 100.0
+
+
+def limits(name, max_ch=None):
+    """(low, high) for a parameter at flow limit max_ch (None: LIMITS_RANGE)."""
+    low, high = LIMITS[name]
+    if not max_ch or max_ch <= 0:
+        return low, high
+    factor = LIMITS_RANGE / max_ch
+    return round(low * factor, 6), round(high * factor, 6)
 
 OUTDOOR_BANDS = ((0.0, "below_0"), (8.0, "0_8"), (15.0, "8_15"))
 
@@ -274,7 +288,7 @@ def recommend(episodes, params, *, room_id=None, room_name=None):
         return None
 
     name, step, why = ACTIONS[v]
-    low, high = LIMITS[name]
+    low, high = limits(name, last.get("max_ch"))
     old = params[name]
     rec = {"verdict": v, "param": name, "old": old, "new": old, "why": why, "at_limit": False}
     if not low <= old <= high:
