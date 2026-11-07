@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.1
 
 - **Fix (#72):** after a restart the PID advice sensor said "no PID numbers configured" while the numbers were configured but not yet available (an ESPHome device still connecting), and kept saying so until the next warm-up ended. It now says "PID numbers unavailable" in that case and shows the stored advice again as soon as the numbers have values. A warm-up that ends while the numbers are unavailable no longer throws away the stored advice. The advice sensor's `mode` attribute and the evening report follow the Apply PID advice automatically option itself, not whether the numbers have a value right now.
 
