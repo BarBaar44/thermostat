@@ -19,7 +19,7 @@ NIGHT_MEAN_ERROR = 0.3     # degC, average absolute error
 NIGHT_MAX_ERROR = 0.6      # degC, worst night
 
 # Warm-up episodes and PID advice
-PID_BANDS = 2              # outdoor bands with a change applied by hand
+PID_BANDS = 2              # outdoor bands with a confirmed change
 PID_EPISODES_AFTER = 5     # valid episodes in that band after the change
 PID_COMPARE_BEFORE = 5     # episodes before the change to compare with
 
@@ -83,7 +83,7 @@ def _better(before, after):
 
 def pid_changes(episodes, room_id=None, room_name=None):
     """
-    PID values changed by hand between valid episodes of the followed room
+    PID values changed (by hand or by autotune) between valid episodes of the followed room
     (judged against the room followed now: tuner_core.judged_valid).
     Returns per outdoor band the last change: the episodes before it and after it.
 
@@ -101,7 +101,7 @@ def pid_changes(episodes, room_id=None, room_name=None):
     """
     followed = [
         e for e in episodes
-        if tuner_core.judged_valid(e, room_id, room_name)
+        if tuner_core.for_advice(e, room_id, room_name)
         and e.get("params") and None not in e["params"].values()
     ]
     by_band = {}
@@ -145,9 +145,9 @@ def pid_progress(episodes, room_id=None, room_name=None):
         ))
     text = f"PID advice: {min(good, PID_BANDS)} of {PID_BANDS} outdoor bands confirmed"
     if parts:
-        text += " (episodes after a change by hand: {})".format(", ".join(parts))
+        text += " (episodes after a change: {})".format(", ".join(parts))
     else:
-        text += " (no change applied by hand yet)"
+        text += " (no change applied yet)"
     text += "; check gas per degree-day did not get worse"
     return {"done": good >= PID_BANDS, "text": text}
 

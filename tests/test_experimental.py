@@ -205,7 +205,8 @@ async def test_warm_up_episode_recorded(hass: HomeAssistant) -> None:
     assert record["overshoot"] is not None and record["overshoot"] > 0
     for reason in ("other_room", "target_changed", "target_not_reached"):
         assert reason not in record["invalid_reasons"]
-    assert record["schema"] == 2 and record["watch_end"] == "reheat"
+    assert record["schema"] == tuner_core.SCHEMA == 3 and record["watch_end"] == "reheat"
+    assert record["kind"] == "warm_up"  # 18.0 to a target of 19.0
     assert 0 < record["watch_min"] < tuner_core.POST_REACH_MIN
     await hass.async_block_till_done()
     state = hass.states.get("sensor.heating_last_warm_up_overshoot")
@@ -935,6 +936,21 @@ def test_recommend_never_moves_against_the_verdict() -> None:
     assert rec["new"] == 0.0027 and not rec["at_limit"] and "outside_range" not in rec
     rec = tuner_core.recommend(overshoot, {"kp": 0.7, "ki": 0.0005, "kd": 0.0})
     assert rec["at_limit"] and rec["new"] == 0.0005
+
+
+def test_limits_follow_the_flow_limit() -> None:
+    assert tuner_core.limits("kp") == (0.3, 1.5)
+    assert tuner_core.limits("kp", 40.0) == (0.75, 3.75)
+    assert tuner_core.limits("ki", 40.0) == (0.00125, 0.025)
+    assert tuner_core.limits("kd", 50.0) == (0.0, 4000.0)
+    # 1.75 at a 40 degC limit is 0.7 at 100: inside the range, so advice
+    overshoot = [_judged(40.0), _judged(40.0)]
+    rec = tuner_core.recommend(overshoot, {"kp": 1.75, "ki": 0.0075, "kd": 0.0})
+    assert rec["param"] == "ki" and rec["new"] == 0.00675 and "outside_range" not in rec
+    # Without a recorded limit the 0 to 100 limits apply, so 1.75 is outside
+    slow = [{**e, "max_ch": None, "overshoot": 0.1, "rise_min": 90} for e in overshoot]
+    rec = tuner_core.recommend(slow, {"kp": 1.75, "ki": 0.0075, "kd": 0.0})
+    assert rec["outside_range"] and rec["high"] == 1.5
 async def test_stored_values_shown_after_reload(hass: HomeAssistant) -> None:
     from custom_components.cloudless_multiroom_thermostat.experimental import store
 
@@ -1077,3 +1093,81 @@ async def test_heating_stopped_after_a_long_enough_watch_keeps_the_warm_up(hass:
     # Switching the room off changes its target first, which ends the watch the same way
     assert record["watch_end"] in ("heating_stopped", "target_changed")
     assert record["watch_min"] >= tuner_core.MIN_WATCH_MIN
+
+
+async def test_auto_apply_writes_rounded_advice_and_reports_it(hass: HomeAssistant) -> None:
+    written = []
+
+    async def set_value(call):
+        written.append((call.data["entity_id"], call.data["value"]))
+        hass.states.async_set(call.data["entity_id"], str(call.data["value"]), {"step": 0.0001})
+
+    hass.services.async_register("number", "set_value", set_value)
+    entry = await _setup(hass, {**EXP, "exp_auto_apply": True, "exp_room": None})
+    runner = entry.runtime_data.experimental
+    hass.states.async_set("number.kp", "1.75", {"step": 0.01})
+    hass.states.async_set("number.ki", "0.0075", {"step": 0.0001})
+    params = {"kp": 1.75, "ki": 0.0075, "kd": 0.0}
+    history = [
+        {
+            "start": f"2026-11-0{d}T06:30:00+01:00", "valid": True, "room_class": "living", "outdoor_band": "0_8",
+            "overshoot": 0.8, "flame_starts_per_hour": 1.0, "undershoot": 0.0, "rise_min": 30, "max_ch": 40.0,
+            "schema": 2, "params": params, "area": "Living",
+        }
+        for d in (1, 2)
+    ]
+    for record in history:
+        store.append_episode(runner.f_episodes, record)
+    rec = runner._round_to_step(tuner_core.recommend(history, params))
+    assert rec["new"] == 0.0068  # 0.00675 on the number's 0.0001 step
+    state = {}
+    await runner._async_autotune(history, params, rec, state)
+    assert written == [("number.ki", 0.0068)]
+    assert state["auto"]["pending"]["params_after"]["ki"] == 0.0068
+    store.write_state(runner.f_state, {"recommendation": rec, **state})
+
+    await runner.async_report()
+    notes = hass.data["persistent_notification"]
+    message = next(iter(notes.values()))["message"]
+    assert "Advice (applied automatically): ki 0.0075 -> 0.0068" in message
+    assert "Automatic PID changes:" in message and "Checking ki 0.0075 -> 0.0068" in message
+
+
+async def test_auto_apply_failed_write_keeps_state(hass: HomeAssistant) -> None:
+    entry = await _setup(hass, {**EXP, "exp_auto_apply": True, "exp_room": None})
+    runner = entry.runtime_data.experimental
+    params = {"kp": 0.7, "ki": 0.003, "kd": 0.0}
+    history = [
+        {
+            "start": f"2026-11-0{d}T06:30:00+01:00", "valid": True, "room_class": "living", "outdoor_band": "0_8",
+            "overshoot": 0.8, "flame_starts_per_hour": 1.0, "undershoot": 0.0, "rise_min": 30, "max_ch": None,
+            "schema": 2, "params": params,
+        }
+        for d in (1, 2)
+    ]
+    state = {}
+    # No number.set_value service registered: the write fails
+    await runner._async_autotune(history, params, tuner_core.recommend(history, params), state)
+    assert state["auto"].get("pending") is None and state["auto"]["log"][-1]["action"] == "failed"
+
+
+async def test_auto_apply_off_by_default(hass: HomeAssistant) -> None:
+    entry = await _setup(hass, EXP)
+    runner = entry.runtime_data.experimental
+    assert not runner._auto
+
+
+def test_top_ups_are_kept_out_of_the_advice() -> None:
+    def ep(start_temp: float) -> dict:
+        return {**_judged(40.0), "target": 18.0, "start_temp": start_temp, "schema": 3}
+
+    assert tuner_core.episode_kind(ep(17.5)) == "warm_up"
+    assert tuner_core.episode_kind(ep(17.85)) == "top_up"
+    assert tuner_core.episode_kind(_judged(40.0)) == "warm_up"  # no target or start_temp
+    params = {"kp": 1.75, "ki": 0.0075, "kd": 0.0}
+    # Two overshooting top-ups ask for nothing; two warm-ups do
+    assert tuner_core.recommend([ep(17.85), ep(17.9)], params) is None
+    assert tuner_core.recommend([ep(17.0), ep(17.85), ep(17.2)], params)["param"] == "ki"
+    line = tuner_core.summary_line({**ep(17.85), "start": "2026-11-07T12:19:00+01:00", "area": "Living",
+                                    "water_peak": None, "return_avg": None, "flame_starts": 1, "outdoor_avg": 6.0})
+    assert line.endswith("top-up (not used for advice)")

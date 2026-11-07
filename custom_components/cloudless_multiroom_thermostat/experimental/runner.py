@@ -1,7 +1,8 @@
 """Experimental features: the HA glue around the analysis modules.
 
 Port of the pyscript heating_tuner app (BarBaar44/Cloudless-Multiroom-Thermostat v1.1.0, pyscript/apps).
-Observe only: nothing here changes the heating. It
+Observe only, with one exception: with "Apply PID advice automatically" on,
+the PID advice is written to the Kp/Ki numbers (autotune). It
 
 * samples the heat source once a minute and cuts warm-up episodes, judged
   by tuner_core, with Kp/Ki/Kd advice when PID numbers are configured;
@@ -41,6 +42,7 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from ..const import (
+    CONF_EXP_AUTO_APPLY,
     CONF_EXP_CH_ACTIVE,
     CONF_EXP_COMFORT_WEEKDAY,
     CONF_EXP_COMFORT_WEEKEND,
@@ -72,7 +74,7 @@ from ..const import (
     WINNER_OFF,
     signal_update,
 )
-from . import gas_core, night_core, progress, store, tuner_core
+from . import autotune, gas_core, night_core, progress, store, tuner_core
 
 if TYPE_CHECKING:
     from ..controller import HeatingController, Room
@@ -210,6 +212,70 @@ class ExperimentalRunner:
 
     def _params(self) -> dict[str, float | None]:
         return {"kp": self._float(CONF_EXP_KP), "ki": self._float(CONF_EXP_KI), "kd": self._float(CONF_EXP_KD)}
+
+    @property
+    def _auto(self) -> bool:
+        """Apply the PID advice automatically (needs all three PID numbers)."""
+        return bool(self._s.get(CONF_EXP_AUTO_APPLY)) and all(v is not None for v in self._params().values())
+
+    def _param_key(self, name: str) -> str:
+        return {"kp": CONF_EXP_KP, "ki": CONF_EXP_KI, "kd": CONF_EXP_KD}[name]
+
+    def _round_to_step(self, rec: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Advice rounded to the number entity's step, so the written value is what it reads back.
+
+        When rounding lands on the old value, one step in the advised
+        direction; outside the limits that is the limit.
+        """
+        if not autotune.usable(rec):
+            return rec
+        state = self.hass.states.get(self._entity(self._param_key(rec["param"])) or "")
+        step = _num(state.attributes.get("step")) if state else None
+        if not step or step <= 0:
+            return rec
+        new = round(round(rec["new"] / step) * step, 10)
+        if autotune.same(new, rec["old"]):
+            new = round(rec["old"] + (step if rec["new"] > rec["old"] else -step), 10)
+        low, high = tuner_core.limits(rec["param"], rec.get("max_ch"))
+        if not low <= new <= high:
+            return {**rec, "new": rec["old"], "at_limit": True}
+        return {**rec, "new": new}
+
+    async def _async_write_param(self, name: str, value: float) -> bool:
+        entity_id = self._entity(self._param_key(name))
+        if not entity_id:
+            return False
+        try:
+            await self.hass.services.async_call(
+                entity_id.split(".", 1)[0], "set_value", {"entity_id": entity_id, "value": value}, blocking=True
+            )
+        except Exception:  # noqa: BLE001 - a failed write must never stop the learning features
+            _LOGGER.warning("Could not set %s to %s", entity_id, value, exc_info=True)
+            return False
+        return True
+
+    async def _async_autotune(
+        self, history: list[dict[str, Any]], params: dict[str, float | None], rec: dict[str, Any] | None,
+        tuner_state: dict[str, Any],
+    ) -> None:
+        """Apply, keep or revert a PID change after a finished warm-up (autotune.decide)."""
+        room = self.room
+        before = tuner_state.get("auto") or {}
+        now = dt_util.now().isoformat(timespec="seconds")
+        action, after = autotune.decide(
+            history, params, rec, before, now,
+            room_id=room.room_id if room else None, room_name=room.name if room else None,
+        )
+        if action and not await self._async_write_param(action["param"], action["value"]):
+            # Keep the old state, so the same step is tried after the next warm-up
+            log = list(before.get("log", [])) + [{
+                "at": now, "action": "failed", "param": action["param"], "old": action["old"],
+                "new": action["value"], "why": f"could not write the value ({action['action']})",
+            }]
+            after = {**before, "log": log[-autotune.LOG_KEEP:]}
+        elif action:
+            _LOGGER.info("PID %s: %s %s -> %s (%s)", action["action"], action["param"], action["old"], action["value"], action["why"])
+        tuner_state["auto"] = after
 
     def _sample(self, room_id: str | None = None) -> dict[str, Any]:
         """One minute of data; room and target follow room_id, else the winner.
@@ -421,6 +487,9 @@ class ExperimentalRunner:
             else None
         )
         tuner_state = await self._io(store.read_state, self.f_state)
+        if self._auto:
+            rec = self._round_to_step(rec)
+            await self._async_autotune(history, params, rec, tuner_state)
         tuner_state["last_episode"] = record["start"]
         tuner_state["recommendation"] = rec
         await self._io(store.write_state, self.f_state, tuner_state)
@@ -430,11 +499,13 @@ class ExperimentalRunner:
             record["start"], record["valid"], record["overshoot"], rec,
         )
 
-    def _rec_text(self, rec: dict[str, Any] | None) -> str:
+    def _rec_text(self, rec: dict[str, Any] | None, auto_state: dict[str, Any] | None = None) -> str:
         if not all(v is not None for v in self._params().values()):
             return "no PID numbers configured"
         if rec is None:
             return "no change"
+        if self._auto and autotune.is_reverted(auto_state, rec):
+            return f"{rec['param']} {rec['old']} -> {rec['new']} ({rec['why']}): tried before and reverted, not applied again"
         if rec.get("outside_range"):
             return (
                 f"{rec['param']} {rec['old']} is outside the range the advice knows "
@@ -462,7 +533,7 @@ class ExperimentalRunner:
                     "invalid_reasons": record.get("invalid_reasons"),
                 },
             )
-        self._set("recommendation", self._rec_text(rec)[:255], {"mode": "observe"})
+        self._set("recommendation", self._rec_text(rec)[:255], {"mode": "auto" if self._auto else "observe"})
 
     async def _async_publish_stored(self) -> None:
         """Show the stored last episode, advice and prediction again after a reload or restart.
@@ -876,7 +947,20 @@ class ExperimentalRunner:
         message = "\n".join(lines)
         if all(v is not None for v in p.values()):
             message += f"\n\nCurrent: Kp {p['kp']}, Ki {p['ki']}, Kd {p['kd']}"
-        message += f"\nWould change (observe mode, nothing applied): {self._rec_text(rec)}"
+        if self._auto:
+            auto_state = tuner_state.get("auto")
+            message += f"\nAdvice (applied automatically): {self._rec_text(rec, auto_state)}"
+            auto_lines = autotune.log_lines(auto_state, today)
+            followed = self.room
+            status = autotune.status_line(
+                auto_state, episodes, followed.room_id if followed else None, followed.name if followed else None
+            )
+            if status:
+                auto_lines.append(status)
+            if auto_lines:
+                message += "\n\nAutomatic PID changes:\n" + "\n".join(auto_lines)
+        else:
+            message += f"\nWould change (observe mode, nothing applied): {self._rec_text(rec)}"
         if boiler_line:
             message += f"\n\n{boiler_line}"
         room = self.room

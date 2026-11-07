@@ -81,6 +81,7 @@ CONF_EXP_KP: Final = "exp_kp"
 CONF_EXP_KI: Final = "exp_ki"
 CONF_EXP_KD: Final = "exp_kd"
 CONF_EXP_INTEGRAL: Final = "exp_integral"
+CONF_EXP_AUTO_APPLY: Final = "exp_auto_apply"  # write the PID advice to the Kp/Ki numbers
 CONF_EXP_GAS_BEFORE6: Final = "exp_gas_price_before6"
 CONF_EXP_GAS_AFTER6: Final = "exp_gas_price_after6"
 EXP_ENTITY_KEYS: Final = (

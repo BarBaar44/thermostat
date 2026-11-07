@@ -33,6 +33,7 @@ from .const import (
     CONF_EXP_GAS,
     CONF_EXP_GAS_AFTER6,
     CONF_EXP_GAS_BEFORE6,
+    CONF_EXP_AUTO_APPLY,
     CONF_EXP_INTEGRAL,
     CONF_EXP_KD,
     CONF_EXP_KI,
@@ -241,12 +242,13 @@ def experimental_schema(rooms: dict[str, str]) -> vol.Schema:
             ),
             vol.Optional(CONF_EXP_WATER): _entities("sensor"),
             vol.Optional(CONF_EXP_RETURN): _entities("sensor"),
-            vol.Optional(CONF_EXP_MAX_CH): _entities("sensor"),
+            vol.Optional(CONF_EXP_MAX_CH): _entities(["sensor", "number", "input_number"]),
             vol.Optional(CONF_EXP_DHW_SETPOINT): _entities("sensor"),
             vol.Optional(CONF_EXP_KP): _entities(["number", "input_number"]),
             vol.Optional(CONF_EXP_KI): _entities(["number", "input_number"]),
             vol.Optional(CONF_EXP_KD): _entities(["number", "input_number"]),
             vol.Optional(CONF_EXP_INTEGRAL): _entities("sensor"),
+            vol.Required(CONF_EXP_AUTO_APPLY, default=False): selector.BooleanSelector(),
             vol.Optional(CONF_EXP_GAS_BEFORE6): _entities("sensor"),
             vol.Optional(CONF_EXP_GAS_AFTER6): _entities("sensor"),
         }
@@ -282,7 +284,8 @@ class SettingsOptionsFlow(OptionsFlow):
             # Keep the experimental settings while switched off, so switching
             # back on remembers them
             for key in (
-                CONF_EXP_ROOM, CONF_EXP_COMFORT_WEEKDAY, CONF_EXP_COMFORT_WEEKEND, CONF_EXP_DHW_RATE, *EXP_ENTITY_KEYS
+                CONF_EXP_ROOM, CONF_EXP_COMFORT_WEEKDAY, CONF_EXP_COMFORT_WEEKEND, CONF_EXP_DHW_RATE,
+                CONF_EXP_AUTO_APPLY, *EXP_ENTITY_KEYS,
             ):
                 if key in current:
                     options[key] = current[key]
