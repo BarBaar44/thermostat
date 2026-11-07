@@ -205,7 +205,8 @@ async def test_warm_up_episode_recorded(hass: HomeAssistant) -> None:
     assert record["overshoot"] is not None and record["overshoot"] > 0
     for reason in ("other_room", "target_changed", "target_not_reached"):
         assert reason not in record["invalid_reasons"]
-    assert record["schema"] == 2 and record["watch_end"] == "reheat"
+    assert record["schema"] == tuner_core.SCHEMA == 3 and record["watch_end"] == "reheat"
+    assert record["kind"] == "warm_up"  # 18.0 to a target of 19.0
     assert 0 < record["watch_min"] < tuner_core.POST_REACH_MIN
     await hass.async_block_till_done()
     state = hass.states.get("sensor.heating_last_warm_up_overshoot")
@@ -1154,3 +1155,19 @@ async def test_auto_apply_off_by_default(hass: HomeAssistant) -> None:
     entry = await _setup(hass, EXP)
     runner = entry.runtime_data.experimental
     assert not runner._auto
+
+
+def test_top_ups_are_kept_out_of_the_advice() -> None:
+    def ep(start_temp: float) -> dict:
+        return {**_judged(40.0), "target": 18.0, "start_temp": start_temp, "schema": 3}
+
+    assert tuner_core.episode_kind(ep(17.5)) == "warm_up"
+    assert tuner_core.episode_kind(ep(17.85)) == "top_up"
+    assert tuner_core.episode_kind(_judged(40.0)) == "warm_up"  # no target or start_temp
+    params = {"kp": 1.75, "ki": 0.0075, "kd": 0.0}
+    # Two overshooting top-ups ask for nothing; two warm-ups do
+    assert tuner_core.recommend([ep(17.85), ep(17.9)], params) is None
+    assert tuner_core.recommend([ep(17.0), ep(17.85), ep(17.2)], params)["param"] == "ki"
+    line = tuner_core.summary_line({**ep(17.85), "start": "2026-11-07T12:19:00+01:00", "area": "Living",
+                                    "water_peak": None, "return_avg": None, "flame_starts": 1, "outdoor_avg": 6.0})
+    assert line.endswith("top-up (not used for advice)")

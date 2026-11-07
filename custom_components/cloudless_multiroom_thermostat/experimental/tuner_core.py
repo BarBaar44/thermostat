@@ -13,13 +13,17 @@ reaching the target ends (see watch_end).
 # earlier disturbance) instead of always running 90 minutes, so overshoot, dip
 # and flame starts are measured differently. Records of different schemas are
 # not compared with each other; records from before schema 1 carry no field.
-SCHEMA = 2
+# Schema 3: top-ups (kind) are kept out of the advice, and with thermostat.yaml
+# max_ch is the flow limit the thermostat really asks for (before, a recorded
+# 40 could have been a 50 degC limit).
+SCHEMA = 3
 
 POST_REACH_MIN = 90        # longest watch after the room first reaches target
 MIN_WATCH_MIN = 20         # a watch cut short before this is not judged
 MAX_RISE_MIN = 240         # give up on reaching target after this long
 MIN_EPISODE_MIN = 30       # shorter episodes are not judged
 DHW_MAX_MIN = 10           # more hot-water time than this disturbs the episode
+MIN_RISE = 0.5             # degC below target at the start for a warm-up; less is a top-up
 
 OVERSHOOT_LIMIT = 0.4      # degC above target
 SLOW_RISE_MIN = 60         # minutes to reach target counted as slow
@@ -122,6 +126,26 @@ def is_room(record, room_id, room_name):
     return record.get("room_class") == "living"
 
 
+def episode_kind(record):
+    """warm_up, or top_up when the room started less than MIN_RISE below target.
+
+    A top-up is the burner reheating a room that sits just below target. On a
+    boiler whose minimum output is well above the room's load one burn
+    overshoots whatever the PID values are, so top-ups say little about them.
+    Derived from target and start_temp, so older records are sorted too; a
+    record without them counts as a warm-up.
+    """
+    target, start = record.get("target"), record.get("start_temp")
+    if target is None or start is None:
+        return "warm_up"
+    return "warm_up" if round(target - start, 2) >= MIN_RISE else "top_up"
+
+
+def for_advice(record, room_id=None, room_name=None):
+    """A valid warm-up (not a top-up) of the room followed now: what the PID advice learns from."""
+    return judged_valid(record, room_id, room_name) and episode_kind(record) == "warm_up"
+
+
 def judged_valid(record, room_id=None, room_name=None):
     """A valid episode of the room followed now.
 
@@ -200,7 +224,7 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
     if len(set(caps)) > 1:
         reasons.append("max_ch_changed")
 
-    return {
+    record = {
         "schema": SCHEMA,
         "watch_min": watch_min,
         "watch_end": watch_reason,
@@ -233,6 +257,8 @@ def analyse(samples, params, start_reason, extra_reasons=(), *, room_id, followe
         "valid": not reasons,
         "invalid_reasons": reasons,
     }
+    record["kind"] = episode_kind(record)
+    return record
 
 
 def _avg(values):
@@ -268,7 +294,7 @@ def recommend(episodes, params, *, room_id=None, room_name=None):
     Recommend one change only when the last CONSISTENT_EPISODES of them
     agree. Returns None or a dict.
     """
-    valid = [e for e in episodes if judged_valid(e, room_id, room_name)]
+    valid = [e for e in episodes if for_advice(e, room_id, room_name)]
     if not valid:
         return None
     last = valid[-1]
@@ -327,6 +353,8 @@ def summary_line(e):
     )
     if e.get("max_ch") is not None:
         line += f", flow limit {e['max_ch']:g}"
+    if episode_kind(e) == "top_up":
+        line += ", top-up (not used for advice)"
     return line
 
 

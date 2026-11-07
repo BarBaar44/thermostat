@@ -111,3 +111,24 @@ def test_log_lines_for_the_report() -> None:
     _, state = autotune.decide(history, P, _rec(history, P), {}, "2026-11-02T09:00:00+01:00")
     assert autotune.log_lines(state, "2026-11-02") == ["- 09:00 applied: ki 0.0075 -> 0.00675 (overshoot above 0.4 degC)"]
     assert autotune.log_lines(state, "2026-11-03") == []
+
+
+def test_top_ups_do_not_count_for_the_check() -> None:
+    history = [_ep("01T06:30", P), _ep("02T06:30", P)]
+    _, state = autotune.decide(history, P, _rec(history, P), {}, "2026-11-02T09:00:00+01:00")
+    new = {**P, "ki": 0.00675}
+    history += [_ep(f"03T1{h}:00", new, overshoot=0.9, target=18.0, start_temp=17.85) for h in range(4)]
+    action, state = autotune.decide(history, new, None, state, "2026-11-03T15:00:00+01:00")
+    assert action is None and state["pending"] is not None
+
+
+def test_a_check_without_verdict_ends_after_14_days_and_keeps_the_change() -> None:
+    history = [_ep("01T06:30", P), _ep("02T06:30", P)]
+    _, state = autotune.decide(history, P, _rec(history, P), {}, "2026-11-02T09:00:00+01:00")
+    new = {**P, "ki": 0.00675}
+    history.append(_ep("03T06:30", new, overshoot=0.9))
+    action, state = autotune.decide(history, new, None, state, "2026-11-15T09:00:00+01:00")
+    assert action is None and state["pending"] is not None  # 13 days: still waiting
+    action, state = autotune.decide(history, new, None, state, "2026-11-16T09:00:00+01:00")
+    assert action is None and state["pending"] is None and state["reverted"] == []
+    assert state["log"][-1]["action"] == "inconclusive" and "1 of 2 warm-ups" in state["log"][-1]["why"]

@@ -15,14 +15,20 @@ Guardrails (see docs/experimental.md, "Applying the advice automatically"):
   acted on must be smaller on average, or the change is reverted;
 - a reverted change is never made again;
 - values changed by hand (or by anything else) end the check without a revert:
-  the user took over.
+  the user took over;
+- a check that has no verdict after CHECK_MAX_DAYS (the weather moved to
+  another band, few clean warm-ups) ends as inconclusive and the change stays:
+  there is no evidence it made things worse, and the learning can go on.
+Only warm-ups count (tuner_core.for_advice): top-ups are left out.
 """
 
+from datetime import datetime, timedelta
 import math
 
 from . import tuner_core
 
 EPISODES_AFTER = 2  # valid warm-ups on the new values before a change is judged
+CHECK_MAX_DAYS = 14  # a check without a verdict by then ends, and the change stays
 LOG_KEEP = 50       # entries kept in the change log
 
 # What must get smaller for a change to stay, per verdict
@@ -76,7 +82,7 @@ def _after(history, pending, room_id, room_name):
     return [
         e for e in history
         if e.get("start", "") > pending["at"]
-        and tuner_core.judged_valid(e, room_id, room_name)
+        and tuner_core.for_advice(e, room_id, room_name)
         and same_params(e.get("params"), pending["params_after"])
         and e["outdoor_band"] == pending["band"]
         and e.get("max_ch") == pending["max_ch"]
@@ -119,6 +125,13 @@ def decide(history, params, rec, state, now, *, room_id=None, room_name=None):
             return done(None)
         after = _after(history, pending, room_id, room_name)
         if len(after) < EPISODES_AFTER:
+            if datetime.fromisoformat(now) - datetime.fromisoformat(pending["at"]) < timedelta(days=CHECK_MAX_DAYS):
+                return done(None)
+            state["pending"] = None
+            state["log"].append(_entry(
+                "inconclusive", now, pending["param"], pending["old"], pending["new"],
+                f"{len(after)} of {EPISODES_AFTER} warm-ups in {CHECK_MAX_DAYS} days, change kept",
+            ))
             return done(None)
         state["pending"] = None
         if improved(pending["verdict"], pending["before"], means(after, pending["verdict"])):
@@ -138,7 +151,7 @@ def decide(history, params, rec, state, now, *, room_id=None, room_name=None):
     for r in state["reverted"]:
         if r["param"] == rec["param"] and same(r["old"], rec["old"]) and same(r["new"], rec["new"]):
             return done(None)  # tried before and made it worse
-    group = [e for e in history if tuner_core.judged_valid(e, room_id, room_name)]
+    group = [e for e in history if tuner_core.for_advice(e, room_id, room_name)]
     group = [
         e for e in group
         if e["outdoor_band"] == rec["band"] and e.get("max_ch") == rec["max_ch"]

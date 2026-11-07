@@ -101,7 +101,7 @@ def pid_changes(episodes, room_id=None, room_name=None):
     """
     followed = [
         e for e in episodes
-        if tuner_core.judged_valid(e, room_id, room_name)
+        if tuner_core.for_advice(e, room_id, room_name)
         and e.get("params") and None not in e["params"].values()
     ]
     by_band = {}
