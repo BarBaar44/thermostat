@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **ESPHome flow limit (`thermostat.yaml`):** `t_set` now has an explicit `max_value: 40` instead of `auto_max_value`, which left the range at 0-100, so the thermostat asked for 100 °C and the boiler followed up to its own upper bound of 50 °C, whatever its panel maximum said. `kp` and `ki` starting values are 2.5 times higher to match the smaller range. If you already run this config, set the Kp and Ki numbers in Home Assistant after flashing: stored values aren't replaced by the YAML.
 - **Docs:** the README explains installing from the Marketplace, which replaces HACS from Home Assistant 2026.11. The HACS steps stay for 2026.10.
 
 ## 1.5.0

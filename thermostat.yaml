@@ -14,7 +14,11 @@ output:
     t_set:
       id: t_set
       min_value: 0
-      auto_max_value: true
+      # Flow limit in degC. The boiler follows a request up to its own upper
+      # bound (50), whatever its panel maximum says, and auto_max_value left
+      # the range at 0-100. The PID output is a fraction of this range, so a
+      # new limit also means rescaling Kp and Ki by the same factor.
+      max_value: 40
       zero_means_zero: true
 
 script:
@@ -34,7 +38,7 @@ number:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: 0.7
+    initial_value: 1.75
     min_value: 0
     max_value: 3
     step: 0.01
@@ -46,7 +50,7 @@ number:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: 0.003
+    initial_value: 0.0075
     min_value: 0
     max_value: 0.05
     step: 0.0001
@@ -177,8 +181,8 @@ climate:
     default_target_temperature: 18
     sensor: ch_room_temperature
     control_parameters: 
-      kp: 0.7
-      ki: 0.003
+      kp: 1.75
+      ki: 0.0075
       # Heat-only loop: a negative integral only delays the next warm-up (it
       # sank to -1 overnight while the room sat above target). Positive side
       # stays at the default 1 so cold days can still build up enough heat.
