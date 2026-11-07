@@ -2,7 +2,7 @@
 
 Cloudless Multiroom Thermostat has a set of **observe-only** learning features. Earlier versions called them *experimental features*; the option, service and file names still use that word.
 
-**Observe only** is the guarantee: they record how the house and the boiler behave and report what they *would* change. **Nothing here changes the heating**: no setpoints, no PID values, no schedule.
+**Observe only** is the default: they record how the house and the boiler behave and report what they *would* change. Nothing here changes the heating (no setpoints, no PID values, no schedule), with one opt-in exception: **[Apply PID advice automatically](#applying-the-advice-automatically)** writes the PID advice to your Kp and Ki numbers.
 
 They are off by default. To switch them on: **Settings > Devices & services > Cloudless Multiroom Thermostat > Configure**, tick **Enable learning features (observe only)**, then fill in the entities on the next page. Every entity is optional; each feature runs as soon as the entities it needs are set. [The entities on the settings page](#the-entities-on-the-settings-page) explains each one and where to get it.
 
@@ -24,10 +24,10 @@ Most of what keeps a feature from stable is not waiting for data but proof: does
 |---|---|---|
 | Gas per degree-day | A full year of data (so a whole heating season), and with the boiler signals set, a measured (or set) hot-water rate | Serve as the official check for the other features |
 | Night cooldown model | At least 30 predicted nights spread over 3 or more outdoor bands, average error 0.3 °C or less, no night off by more than 0.6 °C | Optimum start: begin heating at the predicted time |
-| Warm-up episodes and PID advice | PID values changed by hand, confirmed in at least 2 outdoor bands: in each band, 5 or more valid episodes of the followed room after the change with less overshoot or a faster warm-up on average than the 5 before it in that band, and gas per degree-day not worse | Set the PID values per outdoor band (gain scheduling) |
+| Warm-up episodes and PID advice | PID values changed (by hand or automatically), confirmed in at least 2 outdoor bands: in each band, 5 or more valid episodes of the followed room after the change with less overshoot or a faster warm-up on average than the 5 before it in that band, and gas per degree-day not worse | Set the PID values per outdoor band (gain scheduling) |
 | Evening report | The features it reports on are stable | Stay as it is |
 
-The night model counts its last 30 valid nights that had a prediction. A change by hand is noticed when the Kp, Ki or Kd of an episode differ from the episode before. There is one set of PID values for all weather, so a change is judged in every band it runs in: per band, its episodes on the new values against the 5 before the change in that band. One change can confirm both bands once the weather has varied; a later change replaces it. Whether gas per degree-day got worse is left to you: one change does not move it enough to tell automatically.
+The night model counts its last 30 valid nights that had a prediction. A change is noticed when the Kp, Ki or Kd of an episode differ from the episode before, whether you made it or [the advice was applied automatically](#applying-the-advice-automatically). There is one set of PID values for all weather, so a change is judged in every band it runs in: per band, its episodes on the new values against the 5 before the change in that band. One change can confirm both bands once the weather has varied; a later change replaces it. Whether gas per degree-day got worse is left to you: one change does not move it enough to tell automatically.
 
 The [evening report](#evening-report) shows where each feature stands against these numbers. They are a starting point and may be adjusted as more data comes in.
 
@@ -37,7 +37,7 @@ The [evening report](#evening-report) shows where each feature stands against th
 |---|---|---|---|
 | [Gas per degree-day](#gas-per-degree-day) | **Beta**: running daily since October 2026, the figures are usable for comparing weeks | Gas meter, outdoor temperature. For the hot-water split also burner flame, hot water active, central heating active. Optional: people at home | `sensor.<system>_gas_per_degree_day` |
 | [Night cooldown model](#night-cooldown-model) | **Alpha**: still learning; first back-test was 0.2 to 0.8 °C off | Outdoor temperature, weather forecast, a room to follow | `sensor.<system>_night_prediction` |
-| [Warm-up episodes and PID advice](#warm-up-episodes-and-pid-advice) | **Alpha**: records reliably, advice not yet validated, never applied | Room to follow. Helpful: burner flame, outdoor temperature. For advice: Kp, Ki, Kd of a firmware PID (for example ESPHome) | `sensor.<system>_last_warm_up_overshoot`, `sensor.<system>_pid_advice` |
+| [Warm-up episodes and PID advice](#warm-up-episodes-and-pid-advice) | **Alpha**: records reliably, advice not yet validated; applied only when you switch that on | Room to follow. Helpful: burner flame, outdoor temperature. For advice: Kp, Ki, Kd of a firmware PID (for example ESPHome) | `sensor.<system>_last_warm_up_overshoot`, `sensor.<system>_pid_advice` |
 | [Evening report](#evening-report) | **Beta**: a summary of the above | Any of the above | Persistent notification at 21:00 |
 
 Maturity means:
@@ -74,6 +74,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 | Boiler hot water setpoint | ○ (stored per day) | | |
 | PID Kp, Ki, Kd | | | ✔ for advice (all three) |
 | PID integral | | | ○ |
+| Apply PID advice automatically | | | ○ (off: advice only) |
 | Gas price before / after 06:00 | | ○ | |
 
 **A sensible start for most houses:** outdoor temperature, weather forecast and gas meter. That gives you gas per degree-day and the night model. The boiler fields only make sense with a smart (OpenTherm) boiler connection; the PID fields only with an ESPHome style PID.
@@ -170,7 +171,7 @@ The settings page asks for a lot of entities. You do not need all of them: each 
 ### PID Kp, PID Ki, PID Kd
 
 - **What:** the three tuning values of the PID controller in your boiler firmware that decides the flow temperature. Roughly: **Kp** reacts to how far the room is below target, **Ki** to how long it has been below, **Kd** to how fast the temperature changes.
-- **Why:** the PID advice suggests a better value for one of these. It needs to know the current values to suggest a change, and it notices when you change one by hand so it can check whether the change helped.
+- **Why:** the PID advice suggests a better value for one of these. It needs to know the current values to suggest a change, and it notices when one changes so it can check whether the change helped. With [Apply PID advice automatically](#applying-the-advice-automatically) on, it writes Kp and Ki itself, so they must be **number** or **input_number** entities it can set.
 - **Required:** all three for advice. Without them warm-ups are still recorded and judged, but no advice is given.
 - **Where from:** an ESPHome firmware with a PID climate, where the values are exposed as **number** entities (or kept in **input_number** helpers that match what you flashed). The advice limits (Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000) fit an ESPHome PID driving an OpenTherm flow temperature on a 0 to 100 °C range. The PID output is a fraction of the flow range, so with the **Boiler maximum flow temperature** set the limits scale by 100 / limit: at 40 °C they are Kp 0.75 to 3.75, Ki 0.00125 to 0.025, Kd 0 to 5000. Without that field the 0 to 100 limits apply, so the 40 °C starting values of `thermostat.yaml` get no advice until you set it. **If your boiler has no such PID, leave these empty**: the advice would not make sense for it.
 
@@ -233,7 +234,23 @@ Each episode is judged on time to target (more than 60 minutes is slow), oversho
 - **Advice needs agreement:** the last 2 valid episodes in the same outdoor band (below 0, 0 to 8, 8 to 15, above 15 °C) and with the same boiler maximum flow temperature must point the same way. Records from before the watch ended at the first reheat (schema 1, before 1.5.0) don't count here or in the before and after comparison of a PID change: they watched 90 minutes, so they measured other heat too. Then exactly one value moves by 10%: overshoot means lower Ki; swinging or short-cycling means lower Kp; slow without overshoot means raise Kp. Hard limits: Kp 0.3 to 1.5, Ki 0.0005 to 0.01, Kd 0 to 2000 for a 0 to 100 °C flow range, scaled by 100 / the recorded flow limit when there is one. A value outside its range gets no advice ("outside the range the advice knows"): moving it into the range could go against the verdict, and it usually means another PID scale.
 - **Advice only appears when Kp, Ki and Kd are all set.** Those limits fit an ESPHome PID climate driving an OpenTherm flow temperature; for another controller they may not make sense.
 
-**Why alpha:** no advice has been applied and checked yet. It says what it *would* do, nothing more.
+**Why alpha:** no advice has been applied and checked yet. Without the option below it says what it *would* do, nothing more.
+
+### Applying the advice automatically
+
+With **Apply PID advice automatically** on (off by default, on the learning features page), the advice is not only reported but written to your Kp or Ki number after the warm-up that produced it. This is how the advice proves itself: a change has to be applied before the progress check can see whether it helped.
+
+Guardrails:
+
+- **One value, one small step:** the advice's own 10% step, rounded to the number's step, never outside the [limits](#pid-kp-pid-ki-pid-kd) for the current flow limit. Kd and the flow limit are never written.
+- **Its own warm-ups first:** a change is only made when the warm-ups the advice is based on ran on the current values. After a change, 2 valid warm-ups of the followed room in the same outdoor band, flow limit and schema decide whether it stays. Until then nothing else changes.
+- **Revert when not better:** the problem the advice acted on must be smaller on average than in the 2 warm-ups before (overshoot for Ki, flame starts or undershoot for swinging, warm-up time for slow), and the other one of a pair must not get worse. Otherwise the old value is written back, and that same change is never tried again.
+- **You can always take over:** change Kp, Ki or Kd yourself and the check in progress ends without a revert.
+- **Failures never block heating:** a value that can't be written is logged and tried again after the next warm-up.
+
+The evening report shows every change (applied, kept, reverted, dropped, failed) and the check in progress. The PID advice sensor's `mode` attribute says `auto` or `observe`.
+
+Turning it on doesn't change the 21:00 report's other parts or any other feature: they stay observe only.
 
 ## Evening report
 

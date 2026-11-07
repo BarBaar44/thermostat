@@ -1092,3 +1092,65 @@ async def test_heating_stopped_after_a_long_enough_watch_keeps_the_warm_up(hass:
     # Switching the room off changes its target first, which ends the watch the same way
     assert record["watch_end"] in ("heating_stopped", "target_changed")
     assert record["watch_min"] >= tuner_core.MIN_WATCH_MIN
+
+
+async def test_auto_apply_writes_rounded_advice_and_reports_it(hass: HomeAssistant) -> None:
+    written = []
+
+    async def set_value(call):
+        written.append((call.data["entity_id"], call.data["value"]))
+        hass.states.async_set(call.data["entity_id"], str(call.data["value"]), {"step": 0.0001})
+
+    hass.services.async_register("number", "set_value", set_value)
+    entry = await _setup(hass, {**EXP, "exp_auto_apply": True, "exp_room": None})
+    runner = entry.runtime_data.experimental
+    hass.states.async_set("number.kp", "1.75", {"step": 0.01})
+    hass.states.async_set("number.ki", "0.0075", {"step": 0.0001})
+    params = {"kp": 1.75, "ki": 0.0075, "kd": 0.0}
+    history = [
+        {
+            "start": f"2026-11-0{d}T06:30:00+01:00", "valid": True, "room_class": "living", "outdoor_band": "0_8",
+            "overshoot": 0.8, "flame_starts_per_hour": 1.0, "undershoot": 0.0, "rise_min": 30, "max_ch": 40.0,
+            "schema": 2, "params": params, "area": "Living",
+        }
+        for d in (1, 2)
+    ]
+    for record in history:
+        store.append_episode(runner.f_episodes, record)
+    rec = runner._round_to_step(tuner_core.recommend(history, params))
+    assert rec["new"] == 0.0068  # 0.00675 on the number's 0.0001 step
+    state = {}
+    await runner._async_autotune(history, params, rec, state)
+    assert written == [("number.ki", 0.0068)]
+    assert state["auto"]["pending"]["params_after"]["ki"] == 0.0068
+    store.write_state(runner.f_state, {"recommendation": rec, **state})
+
+    await runner.async_report()
+    notes = hass.data["persistent_notification"]
+    message = next(iter(notes.values()))["message"]
+    assert "Advice (applied automatically): ki 0.0075 -> 0.0068" in message
+    assert "Automatic PID changes:" in message and "Checking ki 0.0075 -> 0.0068" in message
+
+
+async def test_auto_apply_failed_write_keeps_state(hass: HomeAssistant) -> None:
+    entry = await _setup(hass, {**EXP, "exp_auto_apply": True, "exp_room": None})
+    runner = entry.runtime_data.experimental
+    params = {"kp": 0.7, "ki": 0.003, "kd": 0.0}
+    history = [
+        {
+            "start": f"2026-11-0{d}T06:30:00+01:00", "valid": True, "room_class": "living", "outdoor_band": "0_8",
+            "overshoot": 0.8, "flame_starts_per_hour": 1.0, "undershoot": 0.0, "rise_min": 30, "max_ch": None,
+            "schema": 2, "params": params,
+        }
+        for d in (1, 2)
+    ]
+    state = {}
+    # No number.set_value service registered: the write fails
+    await runner._async_autotune(history, params, tuner_core.recommend(history, params), state)
+    assert state["auto"].get("pending") is None and state["auto"]["log"][-1]["action"] == "failed"
+
+
+async def test_auto_apply_off_by_default(hass: HomeAssistant) -> None:
+    entry = await _setup(hass, EXP)
+    runner = entry.runtime_data.experimental
+    assert not runner._auto

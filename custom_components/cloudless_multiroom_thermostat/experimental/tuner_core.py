@@ -290,9 +290,15 @@ def recommend(episodes, params, *, room_id=None, room_name=None):
     name, step, why = ACTIONS[v]
     low, high = limits(name, last.get("max_ch"))
     old = params[name]
-    rec = {"verdict": v, "param": name, "old": old, "new": old, "why": why, "at_limit": False}
+    rec = {
+        "verdict": v, "param": name, "old": old, "new": old, "why": why, "at_limit": False,
+        # What the advice was based on, for autotune: the group and the PID
+        # values its episodes ran on
+        "band": last["outdoor_band"], "max_ch": last.get("max_ch"), "schema": schema_of(last),
+        "group_params": [e.get("params") for e in group],
+    }
     if not low <= old <= high:
-        # Another PID scale than the one LIMITS knows: clamping into the range
+        # Another PID scale than limits() knows: clamping into the range
         # could move the value against the verdict (overshoot -> raise Ki)
         return {**rec, "outside_range": True, "low": low, "high": high}
     new = round(min(max(old * (1 + step), low), high), 5)

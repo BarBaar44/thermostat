@@ -52,7 +52,7 @@ def test_night_progress_done() -> None:
 
 def test_pid_progress_needs_change_by_hand() -> None:
     p = progress.pid_progress([_ep(1, P1, 0.6), _ep(2, P1, 0.5)])
-    assert "0 of 2" in p["text"] and "no change applied by hand yet" in p["text"]
+    assert "0 of 2" in p["text"] and "no change applied yet" in p["text"]
 
 
 def test_pid_progress_change_improves() -> None:
