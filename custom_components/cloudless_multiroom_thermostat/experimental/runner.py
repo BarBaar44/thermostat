@@ -35,6 +35,7 @@ from homeassistant.helpers.dispatcher import (
 )
 from homeassistant.helpers.event import (
     async_call_later,
+    async_track_state_change_event,
     async_track_time_change,
     async_track_time_interval,
 )
@@ -213,10 +214,23 @@ class ExperimentalRunner:
     def _params(self) -> dict[str, float | None]:
         return {"kp": self._float(CONF_EXP_KP), "ki": self._float(CONF_EXP_KI), "kd": self._float(CONF_EXP_KD)}
 
+    def _pid_entities(self) -> list[str]:
+        return [e for e in (self._entity(k) for k in (CONF_EXP_KP, CONF_EXP_KI, CONF_EXP_KD)) if e]
+
+    @property
+    def _pid_configured(self) -> bool:
+        """All three PID numbers set in the options (they may still have no value)."""
+        return len(self._pid_entities()) == 3
+
+    @property
+    def _auto_on(self) -> bool:
+        """The option Apply PID advice automatically, with the PID numbers configured."""
+        return bool(self._s.get(CONF_EXP_AUTO_APPLY)) and self._pid_configured
+
     @property
     def _auto(self) -> bool:
-        """Apply the PID advice automatically (needs all three PID numbers)."""
-        return bool(self._s.get(CONF_EXP_AUTO_APPLY)) and all(v is not None for v in self._params().values())
+        """Apply the PID advice now: the option is on and all three numbers have a value."""
+        return self._auto_on and all(v is not None for v in self._params().values())
 
     def _param_key(self, name: str) -> str:
         return {"kp": CONF_EXP_KP, "ki": CONF_EXP_KI, "kd": CONF_EXP_KD}[name]
@@ -346,6 +360,12 @@ class ExperimentalRunner:
             )
         )
         self._unsubs.append(async_at_started(self.hass, self._async_on_started))
+        if self._pid_entities():
+            # An ESPHome device can connect long after Home Assistant started:
+            # show the stored advice again once its numbers have values
+            self._unsubs.append(
+                async_track_state_change_event(self.hass, self._pid_entities(), self._on_pid_number_change)
+            )
         # Config entries aren't unloaded on shutdown, so async_stop doesn't run then
         self._stop_unsub = self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._async_on_stop)
 
@@ -479,32 +499,35 @@ class ExperimentalRunner:
         await self._io(store.append_episode, self.f_episodes, record)
         history = await self._io(store.read_episodes, self.f_episodes)
         room = self.room
-        rec = (
-            tuner_core.recommend(
+        tuner_state = await self._io(store.read_state, self.f_state)
+        if all(v is not None for v in params.values()):
+            rec = tuner_core.recommend(
                 history, params, room_id=room.room_id if room else None, room_name=room.name if room else None
             )
-            if all(v is not None for v in params.values())
-            else None
-        )
-        tuner_state = await self._io(store.read_state, self.f_state)
+        else:
+            # Numbers not configured, or configured but without a value (the
+            # device is offline): keep the stored advice instead of losing it
+            rec = tuner_state.get("recommendation")
         if self._auto:
             rec = self._round_to_step(rec)
             await self._async_autotune(history, params, rec, tuner_state)
         tuner_state["last_episode"] = record["start"]
         tuner_state["recommendation"] = rec
         await self._io(store.write_state, self.f_state, tuner_state)
-        self._publish_episode(record, rec)
+        self._publish_episode(record, rec, tuner_state.get("auto"))
         _LOGGER.info(
             "Episode %s valid=%s overshoot=%s rec=%s",
             record["start"], record["valid"], record["overshoot"], rec,
         )
 
     def _rec_text(self, rec: dict[str, Any] | None, auto_state: dict[str, Any] | None = None) -> str:
-        if not all(v is not None for v in self._params().values()):
+        if not self._pid_configured:
             return "no PID numbers configured"
+        if not all(v is not None for v in self._params().values()):
+            return "PID numbers unavailable"
         if rec is None:
             return "no change"
-        if self._auto and autotune.is_reverted(auto_state, rec):
+        if self._auto_on and autotune.is_reverted(auto_state, rec):
             return f"{rec['param']} {rec['old']} -> {rec['new']} ({rec['why']}): tried before and reverted, not applied again"
         if rec.get("outside_range"):
             return (
@@ -515,7 +538,9 @@ class ExperimentalRunner:
             return f"{rec['param']} at its limit ({rec['old']}) - {rec['why']}"
         return f"{rec['param']} {rec['old']} -> {rec['new']} ({rec['why']})"
 
-    def _publish_episode(self, record: dict[str, Any] | None, rec: dict[str, Any] | None) -> None:
+    def _publish_episode(
+        self, record: dict[str, Any] | None, rec: dict[str, Any] | None, auto_state: dict[str, Any] | None = None
+    ) -> None:
         if record is not None:
             # .get: records copied from older versions may lack a field
             self._set(
@@ -533,7 +558,19 @@ class ExperimentalRunner:
                     "invalid_reasons": record.get("invalid_reasons"),
                 },
             )
-        self._set("recommendation", self._rec_text(rec)[:255], {"mode": "auto" if self._auto else "observe"})
+        self._publish_advice(rec, auto_state)
+
+    def _publish_advice(self, rec: dict[str, Any] | None, auto_state: dict[str, Any] | None = None) -> None:
+        self._set("recommendation", self._rec_text(rec, auto_state)[:255], {"mode": "auto" if self._auto_on else "observe"})
+
+    @callback
+    def _on_pid_number_change(self, _event: Event) -> None:
+        self.hass.async_create_task(self._async_publish_stored_advice(), f"{DOMAIN} PID advice")
+
+    async def _async_publish_stored_advice(self) -> None:
+        """Show the stored advice again, for instance once the PID numbers have values after a restart."""
+        tuner_state = await self._io(store.read_state, self.f_state)
+        self._publish_advice(tuner_state.get("recommendation"), tuner_state.get("auto"))
 
     async def _async_publish_stored(self) -> None:
         """Show the stored last episode, advice and prediction again after a reload or restart.
@@ -543,7 +580,9 @@ class ExperimentalRunner:
         """
         episodes = await self._io(store.read_episodes, self.f_episodes, 1)
         tuner_state = await self._io(store.read_state, self.f_state)
-        self._publish_episode(episodes[-1] if episodes else None, tuner_state.get("recommendation"))
+        self._publish_episode(
+            episodes[-1] if episodes else None, tuner_state.get("recommendation"), tuner_state.get("auto")
+        )
         prediction = (await self._io(store.read_state, self.f_night_state)).get("prediction")
         if prediction:
             self._publish_prediction(prediction)
@@ -947,7 +986,7 @@ class ExperimentalRunner:
         message = "\n".join(lines)
         if all(v is not None for v in p.values()):
             message += f"\n\nCurrent: Kp {p['kp']}, Ki {p['ki']}, Kd {p['kd']}"
-        if self._auto:
+        if self._auto_on:
             auto_state = tuner_state.get("auto")
             message += f"\nAdvice (applied automatically): {self._rec_text(rec, auto_state)}"
             auto_lines = autotune.log_lines(auto_state, today)

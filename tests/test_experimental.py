@@ -1171,3 +1171,46 @@ def test_top_ups_are_kept_out_of_the_advice() -> None:
     line = tuner_core.summary_line({**ep(17.85), "start": "2026-11-07T12:19:00+01:00", "area": "Living",
                                     "water_peak": None, "return_avg": None, "flame_starts": 1, "outdoor_avg": 6.0})
     assert line.endswith("top-up (not used for advice)")
+
+
+REC = {"param": "ki", "old": 0.003, "new": 0.0027, "why": "overshoot", "at_limit": False}
+
+
+async def test_pid_numbers_unavailable_at_start_then_advice_shown(hass: HomeAssistant) -> None:
+    """Issue #72: after a restart the ESPHome numbers can still be unavailable."""
+    entry = await _setup(hass, {**EXP, "exp_auto_apply": True})
+    runner = entry.runtime_data.experimental
+    store.write_state(runner.f_state, {"recommendation": REC})
+    for eid in ("number.kp", "number.ki", "number.kd"):
+        hass.states.async_set(eid, "unavailable")
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    advice = hass.states.get("sensor.heating_pid_advice")
+    assert advice.state == "PID numbers unavailable"
+    assert advice.attributes["mode"] == "auto", "the mode follows the option, not the numbers' availability"
+    # The device connects: the stored advice comes back without waiting for an episode
+    hass.states.async_set("number.kp", "0.7")
+    hass.states.async_set("number.ki", "0.003")
+    hass.states.async_set("number.kd", "0")
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.heating_pid_advice").state == "ki 0.003 -> 0.0027 (overshoot)"
+
+
+async def test_pid_numbers_not_configured(hass: HomeAssistant) -> None:
+    options = {k: v for k, v in EXP.items() if k not in ("exp_kp", "exp_ki", "exp_kd")}
+    await _setup(hass, options)
+    assert hass.states.get("sensor.heating_pid_advice").state == "no PID numbers configured"
+
+
+async def test_episode_end_while_numbers_unavailable_keeps_the_stored_advice(hass: HomeAssistant) -> None:
+    entry = await _setup(hass, {**EXP, "exp_room": None})
+    runner = await _start_episode(hass, entry, 35)
+    store.write_state(runner.f_state, {"recommendation": REC})
+    hass.states.async_set("number.ki", "unavailable")
+    await hass.async_block_till_done()
+    await runner._async_finish([])
+    await hass.async_block_till_done()
+    assert store.read_state(runner.f_state)["recommendation"] == REC
+    hass.states.async_set("number.ki", "0.003")
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.heating_pid_advice").state == "ki 0.003 -> 0.0027 (overshoot)"

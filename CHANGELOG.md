@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fix (#72):** after a restart the PID advice sensor said "no PID numbers configured" while the numbers were configured but not yet available (an ESPHome device still connecting), and kept saying so until the next warm-up ended. It now says "PID numbers unavailable" in that case and shows the stored advice again as soon as the numbers have values. A warm-up that ends while the numbers are unavailable no longer throws away the stored advice. The advice sensor's `mode` attribute and the evening report follow the Apply PID advice automatically option itself, not whether the numbers have a value right now.
+
 ## 1.6.0
 
 **Upgrading with `thermostat.yaml`:** flash the new config, then in Home Assistant multiply Kp, Ki and Kd by 2.5 (or by 100 / your flow limit), and point **Boiler maximum flow temperature** on the learning features page at the new **Central heating max flow temperature** number. The PID advice history starts over (schema 3). Applying the advice automatically is off until you switch it on.
